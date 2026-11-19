@@ -64,6 +64,7 @@ namespace DayTrace {
    }
   }
   internal static HttpClient CreateClient(TimeSpan timeout){
+   ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
    var client=new HttpClient(new HttpClientHandler{AllowAutoRedirect=true});client.Timeout=timeout;
    client.DefaultRequestHeaders.UserAgent.ParseAdd("DayTrace/"+AppVersion.Current);return client;
   }
