@@ -11,6 +11,10 @@ PASS: new version exposes update action
 PASS: current version reports no update
 PASS: failed update check permits retry
 PASS: GitHub rate limit has a clear recoverable message
+PASS: automatic update check stays off by default
+PASS: automatic update check runs once per day and announces new version
+PASS: automatic update check runs again on next day
+PASS: failed automatic check does not repeat throughout the day
 PASS: AI scope button has label marker and explanation
 PASS: next day is disabled on today
 PASS: next day is enabled on history
@@ -52,6 +56,19 @@ PASS: whole-software manual category updates all titles and history
 PASS: whole-software manual cache applies to new titles
 PASS: title-only manual category leaves other titles unchanged
 PASS: AI-only scope changes grouping without rewriting categories
+PASS: release manifest accepts verified executable metadata
+PASS: release manifest rejects foreign download origins
+PASS: download validates size hash and executable version
+PASS: download rejects corrupted executable and removes partial files
+PASS: download rejects truncated or mismatched size
+PASS: download cancellation leaves no partial payload
+PASS: automatic check setting and last attempt survive restart
+PASS: updater atomically replaces executable and keeps original backup
+PASS: updater rechecks staged payload before replacing old version
+PASS: failed new launch rolls back and restarts original executable
+PASS: updater rejects staged executable outside installation directory
+PASS: helper waits until original process has exited
+PASS: real helper completes verified replacement after original exit
 PASS: 916 fragments compress into 12 distinct app/title activities
 PASS: effective seconds and hourly totals stay exact
 PASS: request omits original GUIDs and record objects

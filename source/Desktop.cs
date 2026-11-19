@@ -19,6 +19,7 @@ using Forms=System.Windows.Forms;
 namespace DayTrace {
 public static class Desktop {
  [STAThread] public static int Main(string[] args) {
+  if(args.Length==2&&args[0]=="--apply-update")return UpdateInstaller.Run(args[1]);
   bool created;bool demo=args.Contains("--demo");
   using(var mutex=new Mutex(true,"Local\\DayTrace."+Environment.UserName+(demo?".Demo":""),out created)) {
    if(!created){Forms.MessageBox.Show("拾时已在运行，请从托盘打开。");return 0;}
@@ -46,10 +47,18 @@ public sealed class DesktopWindow:Window {
  readonly TextBox date=Input(); readonly Button pause,nextDay;
  readonly Button classifyButton,reportButton,cancelButton;
  readonly TextBlock updateStatus=Text("点击检查更新，获取最新版本信息",18);
- Button checkUpdateButton,viewUpdateButton;
+ Button checkUpdateButton,viewUpdateButton,installUpdateButton,cancelUpdateButton;
+ readonly CheckBox autoUpdate=new CheckBox();
+ readonly ProgressBar downloadProgress=new ProgressBar{Height=6,Minimum=0,Maximum=100,Visibility=Visibility.Collapsed,Margin=new Thickness(0,8,0,12)};
+ UpdatePreferences updatePreferences;
+ UpdateInfo availableUpdate;
+ CancellationTokenSource downloadRequest;
+ bool installing,updatingPreference;
+ Action<UpdateInfo> notifyUpdate;
+ string UpdatePreferencesPath{get{return Path.Combine(store.Root,"update-settings.json");}}
  CancellationTokenSource updateRequest;
  Func<CancellationToken,Task<UpdateInfo>> fetchUpdate=UpdateChecker.Check;
- string updatePage=UpdateChecker.Repository+"/tags";
+ string updatePage=UpdateChecker.Repository+"/releases";
  readonly TextBlock aiProgress=Text("选择日期后点击 AI 分类或生成日报",18);
  readonly ProgressBar aiBusy=new ProgressBar{Height=5,IsIndeterminate=true,Visibility=Visibility.Collapsed,Margin=new Thickness(0,8,0,14)};
  readonly DataGrid activities=new DataGrid();readonly ComboBox category=Select(Api.Categories),theme=Select(new[]{"跟随系统","浅色","深色"});
@@ -59,20 +68,22 @@ public sealed class DesktopWindow:Window {
  readonly RichTextBox reportView=new RichTextBox{IsReadOnly=true};readonly StackPanel overview=new StackPanel();readonly WrapPanel dateTools=new WrapPanel();readonly ScrollViewer settingsScroll;
  CancellationTokenSource request;bool busy,quitting,locked,stopped;int ticks,selectedPage;int? timelineHour,timelineMinute;DateTime day=DateTime.Today,lastCleanup=DateTime.Today,observedToday=DateTime.Today;
  public DesktopWindow(Storage storage,bool demonstration){
-  store=storage;demo=demonstration;settings=store.LoadSettings();classificationRules=ClassificationRules.Load(RulesPath);LoadCategoryCache();recorder=new Recorder(store);recorder.CategoryLookup=LookupCategory;tracker=new Tracker(recorder,settings);
+  store=storage;demo=demonstration;updatePreferences=UpdatePreferences.Load(UpdatePreferencesPath);notifyUpdate=NotifyUpdate;settings=store.LoadSettings();classificationRules=ClassificationRules.Load(RulesPath);LoadCategoryCache();recorder=new Recorder(store);recorder.CategoryLookup=LookupCategory;tracker=new Tracker(recorder,settings);
   Title="拾时 · DayTrace";FontFamily=new FontFamily("Microsoft YaHei UI");FontSize=18;Width=Math.Min(1320,SystemParameters.WorkArea.Width);Height=Math.Min(880,SystemParameters.WorkArea.Height);MinWidth=940;MinHeight=630;WindowStartupLocation=WindowStartupLocation.CenterScreen;SetResourceReference(BackgroundProperty,"Canvas");SetResourceReference(ForegroundProperty,"Ink");ApplyTheme(demo?"light":settings.Theme);
   var shell=new Grid();shell.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(240)});shell.ColumnDefinitions.Add(new ColumnDefinition());Content=shell;
-  var side=new Grid{Margin=new Thickness(15,20,15,18)};side.RowDefinitions.Add(new RowDefinition{Height=new GridLength(76)});side.RowDefinitions.Add(new RowDefinition());side.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});shell.Children.Add(side);side.Children.Add(Text("拾时",36,true));var nav=new StackPanel();Grid.SetRow(nav,1);side.Children.Add(nav);
-  string[] names={"⌂   今日概览","▤   活动记录","◇   AI 助手","☷   设置","ⓘ   关于"};for(int i=0;i<names.Length;i++){int index=i;var b=Button(names[i],delegate{Navigate(index);});b.BorderThickness=new Thickness(0);b.Margin=new Thickness(0,3,0,5);b.Padding=new Thickness(14,13,10,13);navigation.Add(b);nav.Children.Add(b);}
-  var bottom=new StackPanel();bottom.Children.Add(status);pause=Button("暂停记录",TogglePause);pause.Margin=new Thickness(0,10,0,6);bottom.Children.Add(pause);var exitButton=Button("退出",Exit);exitButton.Margin=new Thickness(0,0,0,6);bottom.Children.Add(exitButton);bottom.Children.Add(Text("v"+AppVersion.Current,14));Grid.SetRow(bottom,2);side.Children.Add(bottom);
+  var side=new Grid{Margin=new Thickness(15,20,15,18)};side.RowDefinitions.Add(new RowDefinition{Height=new GridLength(76)});side.RowDefinitions.Add(new RowDefinition());side.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});shell.Children.Add(side);var brand=new StackPanel{Orientation=Orientation.Horizontal};
+  using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){var decoder=new IconBitmapDecoder(iconStream,BitmapCreateOptions.None,BitmapCacheOption.OnLoad);var bitmap=decoder.Frames.OrderByDescending(frame=>frame.PixelWidth).First();bitmap.Freeze();Icon=bitmap;brand.Children.Add(new Image{Source=bitmap,Width=36,Height=36,Margin=new Thickness(0,0,10,0),VerticalAlignment=VerticalAlignment.Center});}
+  brand.Children.Add(Text("拾时",36,true));side.Children.Add(brand);var nav=new StackPanel();Grid.SetRow(nav,1);side.Children.Add(nav);
+  string[] names={"⌂   今日概览","▤   活动记录","◇   AI 助手","☷   设置","ⓘ   关于"};for(int i=0;i<names.Length;i++){int index=i;var b=Button(names[i],delegate{Navigate(index);});b.BorderThickness=new Thickness(0);b.Margin=new Thickness(0,3,0,5);b.Padding=new Thickness(14,13,10,13);b.SetResourceReference(StyleProperty,"NavigationButton");navigation.Add(b);nav.Children.Add(b);}
+  var bottom=new StackPanel();bottom.Children.Add(status);pause=Button("暂停记录",TogglePause);pause.SetResourceReference(StyleProperty,"NavigationButton");pause.Margin=new Thickness(0,10,0,6);bottom.Children.Add(pause);var exitButton=Button("退出",Exit);exitButton.SetResourceReference(StyleProperty,"NavigationButton");exitButton.Margin=new Thickness(0,0,0,6);bottom.Children.Add(exitButton);bottom.Children.Add(Text("v"+AppVersion.Current,14));Grid.SetRow(bottom,2);side.Children.Add(bottom);
   Grid.SetColumn(main,1);main.Margin=new Thickness(26,18,24,14);shell.Children.Add(main);main.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});main.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});main.RowDefinitions.Add(new RowDefinition());main.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
   var header=new Grid{Margin=new Thickness(0,0,0,15)};header.Children.Add(title);main.Children.Add(header);
   date.Text=day.ToString("yyyy-MM-dd");date.Width=150;date.Margin=new Thickness(0,0,8,0);date.ToolTip="日期格式 yyyy-MM-dd";date.LostKeyboardFocus+=delegate{CommitDate();};date.KeyDown+=delegate(object s,System.Windows.Input.KeyEventArgs e){if(e.Key==System.Windows.Input.Key.Enter){CommitDate();e.Handled=true;}};dateTools.Children.Add(date);dateTools.Children.Add(Button("日历",ShowCalendar));dateTools.Children.Add(Button("前一天",delegate{SetDay(day.AddDays(-1));}));nextDay=Button("后一天",delegate{SetDay(day.AddDays(1));});dateTools.Children.Add(nextDay);UpdateDateNavigation(DateTime.Today);dateTools.Children.Add(Button("今天",delegate{SetDay(DateTime.Today);}));dateTools.Children.Add(Button("刷新",Refresh));dateTools.Margin=new Thickness(0,0,0,14);Grid.SetRow(dateTools,1);main.Children.Add(dateTools);Grid.SetRow(content,2);main.Children.Add(content);notice.Margin=new Thickness(0,8,0,0);Grid.SetRow(notice,3);main.Children.Add(notice);
   pages.Add(Scroll(overview));pages.Add(BuildActivities());classifyButton=Button("AI 分类",async delegate{await RunAI(false);});reportButton=Button("生成日报",async delegate{await RunAI(true);});cancelButton=Button("取消生成",delegate{if(request!=null)request.Cancel();});cancelButton.IsEnabled=false;pages.Add(BuildAnalysis());settingsScroll=Scroll(BuildSettings());var settingsPage=new DockPanel();var saveBar=Bar(Button("保存设置",SaveSettings),Button("恢复已保存设置",LoadSettings));saveBar.Margin=new Thickness(0,10,0,0);DockPanel.SetDock(saveBar,Dock.Bottom);settingsPage.Children.Add(saveBar);settingsPage.Children.Add(settingsScroll);pages.Add(settingsPage);pages.Add(Scroll(BuildAbout()));LoadSettings();Navigate(0);
-  var menu=new Forms.ContextMenuStrip();menu.Items.Add("打开拾时",null,delegate{Dispatcher.Invoke((Action)Restore);});menu.Items.Add("暂停 / 继续",null,delegate{Dispatcher.Invoke((Action)TogglePause);});menu.Items.Add("设置",null,delegate{Dispatcher.Invoke((Action)delegate{Restore();Navigate(3);});});menu.Items.Add("退出",null,delegate{Dispatcher.Invoke((Action)Exit);});using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.ContextMenuStrip=menu;tray.Visible=!demo;tray.DoubleClick+=delegate{Dispatcher.Invoke((Action)Restore);};
-  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;Error(ex);return;}if(updateRequest!=null)updateRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();Application.Current.Shutdown();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
+  var menu=new Forms.ContextMenuStrip();menu.Items.Add("打开拾时",null,delegate{Dispatcher.Invoke((Action)Restore);});menu.Items.Add("暂停 / 继续",null,delegate{Dispatcher.Invoke((Action)TogglePause);});menu.Items.Add("设置",null,delegate{Dispatcher.Invoke((Action)delegate{Restore();Navigate(3);});});menu.Items.Add("退出",null,delegate{Dispatcher.Invoke((Action)Exit);});using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.ContextMenuStrip=menu;tray.Visible=!demo;tray.DoubleClick+=delegate{Dispatcher.Invoke((Action)Restore);};tray.BalloonTipClicked+=delegate{Dispatcher.Invoke((Action)delegate{Restore();Navigate(4);});};
+  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;Error(ex);return;}if(updateRequest!=null)updateRequest.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();Application.Current.Shutdown();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
   timer.Tick+=delegate{try{if(!stopped)tracker.Feed(Sample());CheckDayRollover(DateTime.Today);if(++ticks%5==0)recorder.Flush();if(ticks%15==0&&IsVisible){if(settings.Theme=="system")ApplyTheme(settings.Theme);if(selectedPage==0)Refresh();}if(lastCleanup!=DateTime.Today){recorder.Flush();store.Cleanup(settings.RetentionDays,DateTime.Today);recorder.Cache.Clear();lastCleanup=DateTime.Today;}}catch(Exception ex){stopped=true;timer.Stop();UpdateRecordingStatus();Error(ex);}};
-  if(demo){var start=day.AddHours(9).ToUniversalTime();recorder.Add(start,start.AddMinutes(42),"WINWORD","项目方案","工作");recorder.Add(start.AddMinutes(42),start.AddMinutes(60),"msedge","C# 文档","学习");recorder.Add(start.AddMinutes(60),start.AddMinutes(75),"离开","无操作","离开");status.Text="演示数据";}else{store.Cleanup(settings.RetentionDays,DateTime.Today);tracker.Feed(Sample());timer.Start();}Refresh();LoadReport();UpdateRecordingStatus();
+  if(demo){var start=day.AddHours(9).ToUniversalTime();recorder.Add(start,start.AddMinutes(42),"WINWORD","项目方案","工作");recorder.Add(start.AddMinutes(42),start.AddMinutes(60),"msedge","C# 文档","学习");recorder.Add(start.AddMinutes(60),start.AddMinutes(75),"离开","无操作","离开");status.Text="演示数据";}else{store.Cleanup(settings.RetentionDays,DateTime.Today);tracker.Feed(Sample());timer.Start();}Loaded+=async delegate{if(!demo)await CheckAutomaticUpdates(DateTime.Today);};Refresh();LoadReport();UpdateRecordingStatus();
  }
  static TextBlock Text(string text,double size=18,bool bold=false){return new TextBlock{Text=text,FontSize=size,FontWeight=bold?FontWeights.SemiBold:FontWeights.Normal,Margin=new Thickness(0,4,0,4),TextWrapping=TextWrapping.Wrap};}
  static TextBox Input(){var input=new TextBox();input.SetResourceReference(Control.ForegroundProperty,"Ink");return input;}
@@ -96,7 +107,7 @@ public sealed class DesktopWindow:Window {
  }
  static Border Card(UIElement body){var b=new Border{Child=body,Padding=new Thickness(18),Margin=new Thickness(0,0,0,16),CornerRadius=new CornerRadius(6),BorderThickness=new Thickness(1)};b.SetResourceReference(Border.BackgroundProperty,"Surface");b.SetResourceReference(Border.BorderBrushProperty,"Line");return b;}
  public static string Duration(double seconds){var t=TimeSpan.FromSeconds(seconds);return t.TotalHours>=1?string.Format("{0} 小时 {1} 分",(int)t.TotalHours,t.Minutes):string.Format("{0} 分 {1} 秒",(int)t.TotalMinutes,t.Seconds);}
- void ApplyTheme(string choice){bool dark=choice=="dark";if(choice=="system")using(var k=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))dark=k!=null&&Convert.ToInt32(k.GetValue("AppsUseLightTheme",1))==0;string[] names={"Canvas","Surface","Field","Ink","Muted","Line","Accent","Selection"};string[] colors=dark?new[]{"#18191D","#28292F","#373942","#ECEDF2","#9296A2","#3A3C44","#0A84FF","#364657"}:new[]{"#F2F7E1","#FCFCF7","#FAFAFA","#1C1E26","#65666B","#E1E4DC","#0066B6","#DDE7D4"};for(int i=0;i<names.Length;i++)Application.Current.Resources[names[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));if(!dark)Application.Current.Resources["Canvas"]=new LinearGradientBrush(Color.FromRgb(234,249,231),Color.FromRgb(250,244,222),20);if(pages.Count==5)Navigate(selectedPage);UpdateRecordingStatus();}
+ void ApplyTheme(string choice){bool dark=choice=="dark";if(choice=="system")using(var k=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))dark=k!=null&&Convert.ToInt32(k.GetValue("AppsUseLightTheme",1))==0;string[] names={"Canvas","Surface","Field","Ink","Muted","Line","Accent","Selection","NavigationHover"};string[] colors=dark?new[]{"#18191D","#28292F","#373942","#ECEDF2","#9296A2","#3A3C44","#0A84FF","#364657","#303946"}:new[]{"#F2F7E1","#FCFCF7","#FAFAFA","#1C1E26","#65666B","#E1E4DC","#0066B6","#DDE7D4","#E3EDDA"};for(int i=0;i<names.Length;i++)Application.Current.Resources[names[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));if(!dark)Application.Current.Resources["Canvas"]=new LinearGradientBrush(Color.FromRgb(234,249,231),Color.FromRgb(250,244,222),20);if(pages.Count==5)Navigate(selectedPage);UpdateRecordingStatus();}
  FrameworkElement BuildActivities(){var root=new DockPanel();var tools=Bar(Button("导出 CSV",Export),Button("删除当天",delegate{Delete(false);}),Button("删除全部历史",delegate{Delete(true);}));DockPanel.SetDock(tools,Dock.Top);root.Children.Add(tools);var footer=Bar(categoryScope,category,Button("修改分类",ApplyManualCategory),AIScopeButton());DockPanel.SetDock(footer,Dock.Bottom);root.Children.Add(footer);Columns(activities);activities.Columns.Add(new DataGridTextColumn{Header="分类范围",Binding=new Binding("Mode"),Width=new DataGridLength(1.1,DataGridLengthUnitType.Star)});activities.SelectionChanged+=delegate{var selected=activities.SelectedItem as ActivityRow;if(selected!=null)categoryScope.SelectedIndex=classificationRules.IsWholeSoftware(selected.App)?1:0;};root.Children.Add(Card(activities));return root;}
  Button AIScopeButton(){
   var button=Button("仅设置 AI 分类范围  ⓘ",ApplyAIScope);
@@ -120,29 +131,74 @@ public sealed class DesktopWindow:Window {
   intro.Children.Add(Text("记录时间的去向，回顾一天的工作与生活。",17));
   root.Children.Add(Card(intro));
   root.Children.Add(Text("软件更新",22,true));
-  var updates=new StackPanel();updates.Children.Add(updateStatus);
-  var hint=Text("手动检查最新版本，发现更新后可前往 GitHub 查看。",16);hint.SetResourceReference(TextBlock.ForegroundProperty,"Muted");updates.Children.Add(hint);
+  var updates=new StackPanel();autoUpdate.IsChecked=updatePreferences.Enabled;
+  autoUpdate.Checked+=async delegate{await SetAutomaticUpdates(true);};autoUpdate.Unchecked+=async delegate{await SetAutomaticUpdates(false);};
+  updates.Children.Add(Row("自动检查更新","每天首次启动或打开软件时检查一次",autoUpdate));updates.Children.Add(updateStatus);
+  var hint=Text("发现新版后可直接下载并更新，完成后自动重新打开软件。",16);hint.SetResourceReference(TextBlock.ForegroundProperty,"Muted");updates.Children.Add(hint);
   checkUpdateButton=Button("检查更新",async delegate{await CheckForUpdates();});
   viewUpdateButton=Button("查看最新版本",delegate{OpenLink(updatePage);});viewUpdateButton.Visibility=Visibility.Collapsed;
-  var actions=Bar(checkUpdateButton,viewUpdateButton);actions.Margin=new Thickness(0,12,0,0);updates.Children.Add(actions);root.Children.Add(Card(updates));
+  installUpdateButton=Button("立即更新",async delegate{await InstallUpdate();});installUpdateButton.Visibility=Visibility.Collapsed;
+  cancelUpdateButton=Button("取消下载",delegate{if(downloadRequest!=null)downloadRequest.Cancel();});cancelUpdateButton.Visibility=Visibility.Collapsed;
+  updates.Children.Add(downloadProgress);
+  var actions=Bar(checkUpdateButton,installUpdateButton,viewUpdateButton,cancelUpdateButton);actions.Margin=new Thickness(0,12,0,0);updates.Children.Add(actions);root.Children.Add(Card(updates));
   root.Children.Add(Text("项目与反馈",22,true));
-  root.Children.Add(Card(Bar(Button("项目主页",delegate{OpenLink(UpdateChecker.Repository);}),Button("版本记录",delegate{OpenLink(UpdateChecker.Repository+"/tags");}),Button("问题反馈",delegate{OpenLink(UpdateChecker.Repository+"/issues");}))));
+  root.Children.Add(Card(Bar(Button("项目主页",delegate{OpenLink(UpdateChecker.Repository);}),Button("版本记录",delegate{OpenLink(UpdateChecker.Repository+"/releases");}),Button("问题反馈",delegate{OpenLink(UpdateChecker.Repository+"/issues");}))));
   return root;
  }
  void OpenLink(string url){try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url){UseShellExecute=true});}catch{notice.Text="无法打开浏览器，请访问 "+url;}}
- async Task CheckForUpdates(){
-  if(updateRequest!=null)return;
+ async Task CheckForUpdates(bool automatic=false){
+  if(updateRequest!=null||installing)return;
   var cancellation=new CancellationTokenSource();updateRequest=cancellation;
-  checkUpdateButton.IsEnabled=false;checkUpdateButton.Content="正在检查…";viewUpdateButton.Visibility=Visibility.Collapsed;updateStatus.Text="正在检查更新…";
+  checkUpdateButton.IsEnabled=false;checkUpdateButton.Content="正在检查…";viewUpdateButton.Visibility=Visibility.Collapsed;installUpdateButton.Visibility=Visibility.Collapsed;availableUpdate=null;updateStatus.Text="正在检查更新…";
   try{
    var result=await fetchUpdate(cancellation.Token);if(quitting)return;
-   updatePage=result.PageUrl;
+   updatePage=result.PageUrl;availableUpdate=result;
    updateStatus.Text=result.Latest==null?"暂未找到正式版本，可前往版本页面查看。":result.HasUpdate?"发现新版本 v"+result.Latest+" · 当前版本 v"+AppVersion.Current:result.Latest==Version.Parse(AppVersion.Current)?"当前已是最新版本（v"+AppVersion.Current+"）":"当前版本无需更新（v"+AppVersion.Current+"）";
    viewUpdateButton.Visibility=result.Latest==null||result.HasUpdate?Visibility.Visible:Visibility.Collapsed;
+   installUpdateButton.Visibility=result.HasUpdate&&result.CanInstall?Visibility.Visible:Visibility.Collapsed;
+   if(automatic&&result.HasUpdate)notifyUpdate(result);
   }catch(OperationCanceledException){if(!quitting)updateStatus.Text="检查超时，请稍后重试。";}
   catch(UpdateCheckException ex){if(!quitting)updateStatus.Text=ex.Message;}
   catch{if(!quitting)updateStatus.Text="检查更新失败，请检查网络后重试，或通过版本记录查看。";}
   finally{updateRequest=null;cancellation.Dispose();if(!quitting){checkUpdateButton.IsEnabled=true;checkUpdateButton.Content="检查更新";}}
+ }
+ async Task SetAutomaticUpdates(bool enabled){
+  if(updatingPreference)return;
+  bool previous=updatePreferences.Enabled;updatePreferences.Enabled=enabled;
+  try{if(!demo)updatePreferences.Save(UpdatePreferencesPath);}catch(Exception ex){updatePreferences.Enabled=previous;updatingPreference=true;autoUpdate.IsChecked=previous;updatingPreference=false;notice.Text="更新设置未保存："+ex.Message;return;}
+  if(enabled&&!demo)await CheckAutomaticUpdates(DateTime.Today);
+ }
+ async Task CheckAutomaticUpdates(DateTime today,bool allowDemo=false){
+  if((demo&&!allowDemo)||updateRequest!=null||installing||!updatePreferences.ShouldCheck(today))return;
+  updatePreferences.LastAttempt=today.ToString("yyyy-MM-dd");
+  try{if(!demo)updatePreferences.Save(UpdatePreferencesPath);}catch(Exception ex){notice.Text="无法保存更新检查日期："+ex.Message;return;}
+  await CheckForUpdates(true);
+ }
+ void NotifyUpdate(UpdateInfo info){
+  notice.Text="发现新版本 v"+info.Latest+"，可在「关于」页面更新。";
+  navigation[4].Content="ⓘ   关于  ·";
+  if(!demo)tray.ShowBalloonTip(8000,"拾时发现新版本","v"+info.Latest+" 已可用，点击查看。",Forms.ToolTipIcon.Info);
+ }
+ async Task InstallUpdate(){
+  if(installing||updateRequest!=null)return;
+  if(busy){notice.Text="请先完成或取消 AI 处理，再进行更新。";return;}
+  var info=availableUpdate;if(info==null||!info.HasUpdate||!info.CanInstall)return;
+  if(!Confirm("下载并安装 v"+info.Latest+"？\n完成后会自动重新打开拾时，记录和设置会保留。"))return;
+  installing=true;var cancellation=new CancellationTokenSource();downloadRequest=cancellation;
+  checkUpdateButton.IsEnabled=installUpdateButton.IsEnabled=false;cancelUpdateButton.Visibility=Visibility.Visible;downloadProgress.Visibility=Visibility.Visible;downloadProgress.Value=0;
+  try{
+   updateStatus.Text="正在下载更新…";
+   string folder=Path.Combine(store.Root,"updates",Guid.NewGuid().ToString("N"));
+   string file=await UpdateInstaller.Download(info,folder,percent=>Dispatcher.BeginInvoke((Action)delegate{if(!quitting){downloadProgress.Value=percent;updateStatus.Text="正在下载更新… "+percent+"%";}}),cancellation.Token);
+   cancellation.Token.ThrowIfCancellationRequested();if(quitting)return;
+   updateStatus.Text="校验通过，正在准备重新启动…";
+   if(!demo&&!stopped)tracker.Feed(Sample());recorder.Flush();
+   string task=UpdateInstaller.Prepare(file,info,typeof(Desktop).Assembly.Location,folder);
+   UpdateInstaller.Start(task);quitting=true;Close();
+  }catch(OperationCanceledException){if(!quitting)updateStatus.Text="已取消下载，原程序未修改。";}
+  catch(UpdateCheckException ex){if(!quitting)updateStatus.Text=ex.Message;}
+  catch(Exception ex){if(!quitting)updateStatus.Text="更新未完成："+ex.Message;}
+  finally{installing=false;downloadRequest=null;cancellation.Dispose();if(!quitting){checkUpdateButton.IsEnabled=installUpdateButton.IsEnabled=true;cancelUpdateButton.Visibility=downloadProgress.Visibility=Visibility.Collapsed;}}
  }
  static FrameworkElement Group(params UIElement[] rows){var p=new StackPanel();foreach(var row in rows)p.Children.Add(row);return Card(p);}
  static FrameworkElement Row(string name,string detail,FrameworkElement field){var g=new Grid{Margin=new Thickness(0,7,0,9)};g.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1.05,GridUnitType.Star)});g.ColumnDefinitions.Add(new ColumnDefinition());var label=new StackPanel{Margin=new Thickness(0,0,18,0),VerticalAlignment=VerticalAlignment.Center};label.Children.Add(Text(name,20));var hint=Text(detail,15);hint.SetResourceReference(TextBlock.ForegroundProperty,"Muted");label.Children.Add(hint);g.Children.Add(label);field.VerticalAlignment=VerticalAlignment.Center;Grid.SetColumn(field,1);g.Children.Add(field);return g;}
@@ -296,7 +352,7 @@ public sealed class DesktopWindow:Window {
   reportView.Document=document;reportView.ScrollToHome();
  }
  async Task RunAI(bool generateReport){
-  if(busy)return;
+  if(busy||installing)return;
   DateTime target=day;
   try{
    if(demo){aiProgress.Text="演示模式，不调用真实接口";return;}
@@ -344,8 +400,8 @@ public sealed class DesktopWindow:Window {
   status.Text=stopped?"记录已停止":demo?"演示数据":tracker!=null&&tracker.Paused?"已暂停":"正在记录";
   status.Foreground=new SolidColorBrush(stopped?Color.FromRgb(226,90,90):tracker!=null&&tracker.Paused?Color.FromRgb(218,155,48):Color.FromRgb(27,173,132));
  }
- void Restore(){Show();WindowState=WindowState.Normal;Activate();}
- void Exit(){if(busy&&!Confirm("取消当前 AI 操作并退出？"))return;if(request!=null)request.Cancel();quitting=true;Close();}
+ async void Restore(){Show();WindowState=WindowState.Normal;Activate();try{await CheckAutomaticUpdates(DateTime.Today);}catch(Exception ex){Error(ex);}}
+ void Exit(){if(busy&&!Confirm("取消当前 AI 操作并退出？"))return;if(request!=null)request.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();quitting=true;Close();}
  public async Task Verify(string folder){
   try{
    Directory.CreateDirectory(folder);var checks=new List<string>();
@@ -373,6 +429,14 @@ public sealed class DesktopWindow:Window {
    fetchUpdate=token=>{throw new UpdateCheckException("GitHub 请求次数已达上限，请稍后重试，或通过版本记录查看。");};await CheckForUpdates();
    check("GitHub rate limit has a clear recoverable message",checkUpdateButton.IsEnabled&&updateStatus.Text.Contains("上限"));
    fetchUpdate=token=>Task.FromResult(new UpdateInfo{Latest=Version.Parse(AppVersion.Current)});await CheckForUpdates();fetchUpdate=UpdateChecker.Check;
+   int automaticCalls=0,updateNotices=0;fetchUpdate=token=>{automaticCalls++;return Task.FromResult(new UpdateInfo{Latest=new Version(9,0,0)});};notifyUpdate=info=>updateNotices++;
+   updatePreferences.Enabled=false;await CheckAutomaticUpdates(DateTime.Today,true);check("automatic update check stays off by default",automaticCalls==0);
+   updatePreferences.Enabled=true;updatePreferences.LastAttempt="";await CheckAutomaticUpdates(DateTime.Today,true);await CheckAutomaticUpdates(DateTime.Today,true);
+   check("automatic update check runs once per day and announces new version",automaticCalls==1&&updateNotices==1);
+   await CheckAutomaticUpdates(DateTime.Today.AddDays(1),true);check("automatic update check runs again on next day",automaticCalls==2);
+   fetchUpdate=token=>{automaticCalls++;throw new System.Net.Http.HttpRequestException("Test offline");};await CheckAutomaticUpdates(DateTime.Today.AddDays(2),true);await CheckAutomaticUpdates(DateTime.Today.AddDays(2),true);
+   check("failed automatic check does not repeat throughout the day",automaticCalls==3);
+   updatePreferences.Enabled=false;updatePreferences.LastAttempt="";notifyUpdate=NotifyUpdate;fetchUpdate=token=>Task.FromResult(new UpdateInfo{Latest=Version.Parse(AppVersion.Current)});await CheckForUpdates();fetchUpdate=UpdateChecker.Check;
    ApplyTheme("light");Navigate(4);await Dispatcher.Yield(DispatcherPriority.Background);Snapshot(Path.Combine(folder,"about-light.png"));
    ApplyTheme("dark");await Dispatcher.Yield(DispatcherPriority.Background);Snapshot(Path.Combine(folder,"about-dark.png"));Navigate(0);
    check("AI scope button has label marker and explanation",Descendants<Button>(pages[1]).Any(x=>Convert.ToString(x.Content)=="仅设置 AI 分类范围  ⓘ"&&Convert.ToString(x.ToolTip)=="只保存范围，具体分到哪类由下次 AI 分类决定。"));
@@ -458,7 +522,7 @@ public sealed class DesktopWindow:Window {
    check("title-only manual category leaves other titles unchanged",recorder.Day(day).Single(x=>x.App=="scope-test"&&x.Title=="标题A").Category=="学习"&&recorder.Day(day).Single(x=>x.App=="scope-test"&&x.Title=="标题B").Category=="娱乐"&&!classificationRules.IsWholeSoftware("scope-test"));
    activities.SelectedItems.Clear();activities.SelectedItem=activities.Items.Cast<ActivityRow>().First(x=>x.App=="scope-test"&&x.Title=="标题A");categoryScope.SelectedIndex=1;ApplyAIScope();check("AI-only scope changes grouping without rewriting categories",classificationRules.IsWholeSoftware("scope-test")&&recorder.Day(day).Single(x=>x.App=="scope-test"&&x.Title=="标题A").Category=="学习");
    await Dispatcher.Yield(DispatcherPriority.Background);Snapshot(Path.Combine(folder,"classification-scope.png"));
-   await BatchChecks.Run(check);File.WriteAllLines(Path.Combine(folder,"checks.txt"),checks);
+   await UpdateChecks.Run(check,folder);await BatchChecks.Run(check);File.WriteAllLines(Path.Combine(folder,"checks.txt"),checks);
   }catch(Exception ex){File.WriteAllText(Path.Combine(folder,"checks.txt"),ex.ToString());Environment.ExitCode=1;}
   finally{quitting=true;Close();}
  }

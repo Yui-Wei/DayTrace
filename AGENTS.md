@@ -8,3 +8,9 @@
 - 后续版本必须遵循 VERSIONING.md：不兼容变更升主版本；兼容新增功能升次版本；兼容修复、小的性能优化和界面细节调整升修订号。提高某一级时，较低级数字归零。
 - 版本来源为 source/AppVersion.cs 的 AppVersion.Current；同步维护文档及 vX.Y.Z 标签。
 - 发布后不重写或移动已有版本标签。
+
+## 发布流程
+
+- 修改功能后同步维护 CHANGELOG.md 与 RELEASE_NOTES.md；用 source/package.ps1 生成程序和更新清单。
+- vX.Y.Z 标签触发 GitHub Actions 发布，更新清单、程序和标签版本必须一致，校验值由实际程序生成。
+- 版本号按用户明确指定时优先遵从用户；1.1.1 是用户指定的版本号。

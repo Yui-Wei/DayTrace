@@ -1,4 +1,4 @@
-# Generated binaries and packages
+﻿# Generated binaries and packages
 /DayTrace.exe
 *.pdb
 *.zip
@@ -24,3 +24,7 @@
 /settings.json
 /classification-rules.json
 /classification-cache.json
+
+# In-place updater files
+/.DayTrace-update-*.exe
+/DayTrace.exe.update-backup
