@@ -1,9 +1,16 @@
+PASS: single instance acquires first ownership
+PASS: active owner prevents duplicate instance
+PASS: second launch can activate existing instance
+PASS: clean exit releases instance ownership
+PASS: abandoned instance lock does not falsely block startup
 PASS: light native caption color accepted by Windows
 PASS: light native frame and caption text colors accepted by Windows
-PASS: light tray menu opens with larger readable rows
+PASS: light tray menu uses current theme background
+PASS: light tray menu opens with compact readable rows
 PASS: dark native caption color accepted by Windows
 PASS: dark native frame and caption text colors accepted by Windows
-PASS: dark tray menu opens with larger readable rows
+PASS: dark tray menu uses current theme background
+PASS: dark tray menu opens with compact readable rows
 PASS: tray pause action closes menu and next open shows continue
 PASS: tray continue action restores recording
 PASS: navigation and dropdown lifecycle

@@ -9,6 +9,11 @@
 - 版本来源为 source/AppVersion.cs 的 AppVersion.Current；同步维护文档及 vX.Y.Z 标签。
 - 发布后不重写或移动已有版本标签。
 
+## 发布确认（用户要求）
+
+- 修改完成后先提供本地预览程序和截图，让用户检查效果。
+- 在用户明确确认交付前，不递增正式版本号、不推送 GitHub、不创建或修改版本标签、不发布 Release。
+
 ## 发布流程
 
 - 修改功能后同步维护 CHANGELOG.md 与 RELEASE_NOTES.md；用 source/package.ps1 生成程序和更新清单。
