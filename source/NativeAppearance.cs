@@ -38,13 +38,15 @@ namespace DayTrace {
    for(int i=0;i<10&&!IsWindowVisible(window);i++)System.Threading.Thread.Sleep(50);
    if(!IsWindowVisible(window))return false;SetForegroundWindow(window);return true;
   }
-  public static void TestTrayRightClick(System.Windows.Forms.NotifyIcon tray){
+  public static void TestTrayRightClick(System.Windows.Forms.NotifyIcon tray){TestTrayClick(tray,0x205);}
+  public static void TestTrayLeftClick(System.Windows.Forms.NotifyIcon tray){TestTrayClick(tray,0x202);}
+  static void TestTrayClick(System.Windows.Forms.NotifyIcon tray,int buttonMessage){
    var flags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
    var type=typeof(System.Windows.Forms.NotifyIcon);
    var window=(System.Windows.Forms.NativeWindow)type.GetField("window",flags).GetValue(tray);
    var message=(int)type.GetField("WM_TRAYMOUSEMESSAGE",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).GetRawConstantValue();
    var id=(int)type.GetField("id",flags).GetValue(tray);
-   PostMessage(window.Handle,message,new IntPtr(id),new IntPtr(0x205));
+   PostMessage(window.Handle,message,new IntPtr(id),new IntPtr(buttonMessage));
   }
   public static void FocusMenu(ContextMenu menu){var source=PresentationSource.FromVisual(menu) as HwndSource;if(source!=null)SetForegroundWindow(source.Handle);menu.Focus();}
   public static void Capture(Window window,string path){

@@ -37,6 +37,17 @@ PASS: next day is enabled on history
 PASS: midnight follows current day
 PASS: midnight keeps historical selection
 PASS: search box removed from header
+PASS: settings page no longer contains manual save or restore buttons
+PASS: theme selection saves immediately
+PASS: startup toggle applies immediately even with invalid unrelated input
+PASS: input focus loss saves settings to disk and active tracker
+PASS: invalid endpoint keeps last saved endpoint
+PASS: API key auto-save uses credential store and clears visible input
+PASS: API key is absent from settings JSON
+PASS: closing with invalid endpoint preserves old key and permits exit
+PASS: closing saves valid pending edits independently of invalid inputs
+PASS: failed automatic write preserves saved theme and shows error
+PASS: native left tray click restores main window
 PASS: saved key visibly indicated without plaintext
 PASS: replacement key indicated as pending
 PASS: key state isolated by API address

@@ -90,11 +90,24 @@ public sealed class DesktopWindow:Window {
  readonly DataGrid activities=new DataGrid();readonly ComboBox category=Select(Api.Categories),theme=Select(new[]{"跟随系统","浅色","深色"});
  readonly TextBox retention=Input(),excluded=Input(),continuous=Input(),baseUrl=Input(),model=Input();readonly PasswordBox key=new PasswordBox();
  readonly TextBlock keyStatus=Text("",15),savedKeyHint=Text("",16);
- Func<string,string> readCredential=Credentials.Read;readonly CheckBox startup=new CheckBox();
+ Func<string,string> readCredential=Credentials.Read;
+ Action<string,string> writeCredential;
+ Action<string> deleteCredential;
+ Func<bool> readStartup;
+ Action<bool> writeStartup;
+ Action<Settings> persistSettings;
+ readonly Dictionary<string,string> demoCredentials=new Dictionary<string,string>();bool demoStartup;
+ bool loadingSettings,savingSettings;
+ readonly HashSet<string> dirtySettings=new HashSet<string>();
+ readonly TextBlock settingsStatus=Text("设置会自动保存；输入框在编辑完成后生效。",16);
+ readonly CheckBox startup=new CheckBox();
  readonly RichTextBox reportView=new RichTextBox{IsReadOnly=true};readonly StackPanel overview=new StackPanel();readonly WrapPanel dateTools=new WrapPanel();readonly ScrollViewer settingsScroll;
  CancellationTokenSource request;bool busy,quitting,locked,stopped;int ticks,selectedPage;int? timelineHour,timelineMinute;DateTime day=DateTime.Today,lastCleanup=DateTime.Today,observedToday=DateTime.Today;
  public DesktopWindow(Storage storage,bool demonstration){
-  store=storage;demo=demonstration;updatePreferences=UpdatePreferences.Load(UpdatePreferencesPath);notifyUpdate=NotifyUpdate;settings=store.LoadSettings();classificationRules=ClassificationRules.Load(RulesPath);LoadCategoryCache();recorder=new Recorder(store);recorder.CategoryLookup=LookupCategory;tracker=new Tracker(recorder,settings);
+  store=storage;demo=demonstration;persistSettings=store.SaveSettings;
+  if(demo){readCredential=url=>demoCredentials.ContainsKey(url)?demoCredentials[url]:"";writeCredential=(url,value)=>demoCredentials[url]=value;deleteCredential=url=>demoCredentials.Remove(url);readStartup=()=>demoStartup;writeStartup=value=>demoStartup=value;}
+  else{readCredential=Credentials.Read;writeCredential=Credentials.Write;deleteCredential=Credentials.Delete;readStartup=()=>Startup.Enabled;writeStartup=Startup.Set;}
+  updatePreferences=UpdatePreferences.Load(UpdatePreferencesPath);notifyUpdate=NotifyUpdate;settings=store.LoadSettings();classificationRules=ClassificationRules.Load(RulesPath);LoadCategoryCache();recorder=new Recorder(store);recorder.CategoryLookup=LookupCategory;tracker=new Tracker(recorder,settings);
   Title="拾时 · DayTrace";FontFamily=new FontFamily("Microsoft YaHei UI");FontSize=18;Width=Math.Min(1320,SystemParameters.WorkArea.Width);Height=Math.Min(880,SystemParameters.WorkArea.Height);MinWidth=940;MinHeight=630;WindowStartupLocation=WindowStartupLocation.CenterScreen;SetResourceReference(BackgroundProperty,"Canvas");SetResourceReference(ForegroundProperty,"Ink");ApplyTheme(demo?"light":settings.Theme);
   SourceInitialized+=delegate{NativeAppearance.Apply(this,themeIsDark);};
   var shell=new Grid();shell.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(240)});shell.ColumnDefinitions.Add(new ColumnDefinition());Content=shell;
@@ -106,9 +119,9 @@ public sealed class DesktopWindow:Window {
   Grid.SetColumn(main,1);main.Margin=new Thickness(26,18,24,14);shell.Children.Add(main);main.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});main.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});main.RowDefinitions.Add(new RowDefinition());main.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
   var header=new Grid{Margin=new Thickness(0,0,0,15)};header.Children.Add(title);main.Children.Add(header);
   date.Text=day.ToString("yyyy-MM-dd");date.Width=150;date.Margin=new Thickness(0,0,8,0);date.ToolTip="日期格式 yyyy-MM-dd";date.LostKeyboardFocus+=delegate{CommitDate();};date.KeyDown+=delegate(object s,System.Windows.Input.KeyEventArgs e){if(e.Key==System.Windows.Input.Key.Enter){CommitDate();e.Handled=true;}};dateTools.Children.Add(date);dateTools.Children.Add(Button("日历",ShowCalendar));dateTools.Children.Add(Button("前一天",delegate{SetDay(day.AddDays(-1));}));nextDay=Button("后一天",delegate{SetDay(day.AddDays(1));});dateTools.Children.Add(nextDay);UpdateDateNavigation(DateTime.Today);dateTools.Children.Add(Button("今天",delegate{SetDay(DateTime.Today);}));dateTools.Children.Add(Button("刷新",Refresh));dateTools.Margin=new Thickness(0,0,0,14);Grid.SetRow(dateTools,1);main.Children.Add(dateTools);Grid.SetRow(content,2);main.Children.Add(content);notice.Margin=new Thickness(0,8,0,0);Grid.SetRow(notice,3);main.Children.Add(notice);
-  pages.Add(Scroll(overview));pages.Add(BuildActivities());classifyButton=Button("AI 分类",async delegate{await RunAI(false);});reportButton=Button("生成日报",async delegate{await RunAI(true);});cancelButton=Button("取消生成",delegate{if(request!=null)request.Cancel();});cancelButton.IsEnabled=false;pages.Add(BuildAnalysis());settingsScroll=Scroll(BuildSettings());var settingsPage=new DockPanel();var saveBar=Bar(Button("保存设置",SaveSettings),Button("恢复已保存设置",LoadSettings));saveBar.Margin=new Thickness(0,10,0,0);DockPanel.SetDock(saveBar,Dock.Bottom);settingsPage.Children.Add(saveBar);settingsPage.Children.Add(settingsScroll);pages.Add(settingsPage);pages.Add(Scroll(BuildAbout()));LoadSettings();Navigate(0);
-  BuildTrayMenu();using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.MouseUp+=delegate(object sender,Forms.MouseEventArgs e){if(e.Button==Forms.MouseButtons.Right)Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)ShowTrayMenu);};tray.Visible=!demo;tray.DoubleClick+=delegate{Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)Restore);};tray.BalloonTipClicked+=delegate{Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)delegate{Restore();Navigate(4);});};
-  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;exitPending=false;Show();WindowState=WindowState.Normal;Activate();Error(ex);Forms.MessageBox.Show("保存记录失败，尚未退出："+ex.Message,"拾时");return;}trayMenu.IsOpen=false;if(updateRequest!=null)updateRequest.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
+  pages.Add(Scroll(overview));pages.Add(BuildActivities());classifyButton=Button("AI 分类",async delegate{await RunAI(false);});reportButton=Button("生成日报",async delegate{await RunAI(true);});cancelButton=Button("取消生成",delegate{if(request!=null)request.Cancel();});cancelButton.IsEnabled=false;pages.Add(BuildAnalysis());settingsScroll=Scroll(BuildSettings());pages.Add(settingsScroll);pages.Add(Scroll(BuildAbout()));LoadSettings();BindAutomaticSettings();Navigate(0);
+  BuildTrayMenu();using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.MouseUp+=delegate(object sender,Forms.MouseEventArgs e){if(e.Button==Forms.MouseButtons.Right)Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)ShowTrayMenu);else if(e.Button==Forms.MouseButtons.Left)Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)Restore);};tray.Visible=!demo;tray.BalloonTipClicked+=delegate{Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)delegate{Restore();Navigate(4);});};
+  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){FlushAutomaticSettings(true);if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;exitPending=false;Show();WindowState=WindowState.Normal;Activate();Error(ex);Forms.MessageBox.Show("保存记录失败，尚未退出："+ex.Message,"拾时");return;}trayMenu.IsOpen=false;if(updateRequest!=null)updateRequest.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
   timer.Tick+=delegate{try{if(!stopped)tracker.Feed(Sample());CheckDayRollover(DateTime.Today);if(++ticks%5==0)recorder.Flush();if(ticks%15==0&&IsVisible){if(settings.Theme=="system")ApplyTheme(settings.Theme);if(selectedPage==0)Refresh();}if(lastCleanup!=DateTime.Today){recorder.Flush();store.Cleanup(settings.RetentionDays,DateTime.Today);recorder.Cache.Clear();lastCleanup=DateTime.Today;}}catch(Exception ex){stopped=true;timer.Stop();UpdateRecordingStatus();Error(ex);}};
   if(demo){var start=day.AddHours(9).ToUniversalTime();recorder.Add(start,start.AddMinutes(42),"WINWORD","项目方案","工作");recorder.Add(start.AddMinutes(42),start.AddMinutes(60),"msedge","C# 文档","学习");recorder.Add(start.AddMinutes(60),start.AddMinutes(75),"离开","无操作","离开");status.Text="演示数据";}else{store.Cleanup(settings.RetentionDays,DateTime.Today);tracker.Feed(Sample());timer.Start();}Loaded+=async delegate{if(!demo)await CheckAutomaticUpdates(DateTime.Today);};Refresh();LoadReport();UpdateRecordingStatus();
  }
@@ -170,7 +183,7 @@ public sealed class DesktopWindow:Window {
   top.Children.Add(aiProgress);top.Children.Add(aiBusy);top.Margin=new Thickness(0,0,0,10);
   DockPanel.SetDock(top,Dock.Top);root.Children.Add(top);root.Children.Add(Card(reportView));return root;
  }
- FrameworkElement BuildSettings(){var root=new StackPanel();root.Children.Add(Text("常规设置",22,true));root.Children.Add(Group(Row("外观主题","跟随 Windows 或选择浅色、深色",theme),Row("开机自启动","登录 Windows 后在托盘记录",startup),Row("记录保留","天，0 表示永久保留",retention)));excluded.AcceptsReturn=continuous.AcceptsReturn=true;excluded.TextWrapping=continuous.TextWrapping=TextWrapping.Wrap;excluded.Height=continuous.Height=90;excluded.VerticalScrollBarVisibility=continuous.VerticalScrollBarVisibility=ScrollBarVisibility.Auto;root.Children.Add(Text("活动采集",22,true));root.Children.Add(Group(Row("排除软件","每行填写一个进程名",excluded),Row("持续计时软件","前台视频和会议，锁屏仍算离开",continuous)));root.Children.Add(Text("AI 接口",22,true));root.Children.Add(Group(Row("API 地址","支持 OpenAI 兼容 HTTPS 接口",baseUrl),Row("模型名称","填写服务商提供的模型名",model),Row("API Key","保存在 Windows 凭据管理器中，留空保留现有密钥",KeyEditor()),Row("快捷配置","预设或删除当前接口密钥",Bar(Button("DeepSeek",delegate{baseUrl.Text="https://api.deepseek.com";model.Text="deepseek-flash";key.Clear();}),Button("删除 Key",delegate{if(Confirm("删除此接口的 API Key？")){Credentials.Delete(baseUrl.Text);key.Clear();UpdateKeyStatus();notice.Text="密钥已删除";}})))));return root;}
+ FrameworkElement BuildSettings(){var root=new StackPanel();root.Children.Add(settingsStatus);root.Children.Add(Text("常规设置",22,true));root.Children.Add(Group(Row("外观主题","跟随 Windows 或选择浅色、深色",theme),Row("开机自启动","登录 Windows 后在托盘记录",startup),Row("记录保留","天，0 表示永久保留",retention)));excluded.AcceptsReturn=continuous.AcceptsReturn=true;excluded.TextWrapping=continuous.TextWrapping=TextWrapping.Wrap;excluded.Height=continuous.Height=90;excluded.VerticalScrollBarVisibility=continuous.VerticalScrollBarVisibility=ScrollBarVisibility.Auto;root.Children.Add(Text("活动采集",22,true));root.Children.Add(Group(Row("排除软件","每行填写一个进程名",excluded),Row("持续计时软件","前台视频和会议，锁屏仍算离开",continuous)));root.Children.Add(Text("AI 接口",22,true));root.Children.Add(Group(Row("API 地址","支持 OpenAI 兼容 HTTPS 接口",baseUrl),Row("模型名称","填写服务商提供的模型名",model),Row("API Key","编辑完成后自动保存；留空保留现有密钥",KeyEditor()),Row("快捷配置","预设或删除当前接口密钥",Bar(Button("DeepSeek",ApplyDeepSeekPreset),Button("删除 Key",delegate{if(Confirm("删除此接口的 API Key？")){deleteCredential(baseUrl.Text);key.Clear();UpdateKeyStatus();notice.Text="密钥已删除";}})))));return root;}
  FrameworkElement BuildAbout(){
   var root=new StackPanel();
   var intro=new StackPanel();intro.Children.Add(Text("拾时 · DayTrace",30,true));
@@ -377,8 +390,86 @@ public sealed class DesktopWindow:Window {
    notice.Text="已按"+(whole?"整个软件":"窗口标题")+"更新 "+changed+" 条历史记录，新记录继续沿用该范围";
   }catch(Exception ex){Error(ex);}
  }
- void LoadSettings(){theme.SelectedIndex=settings.Theme=="light"?1:settings.Theme=="dark"?2:0;retention.Text=settings.RetentionDays.ToString();excluded.Text=settings.Excluded;continuous.Text=settings.Continuous;baseUrl.Text=settings.BaseUrl;model.Text=settings.Model;key.Clear();startup.IsChecked=!demo&&Startup.Enabled;UpdateKeyStatus();}
- void SaveSettings(){try{if(busy){notice.Text="请先完成或取消 AI 请求";return;}int days;if(!int.TryParse(retention.Text,out days)||days<0||days>36500)throw new Exception("保留天数应为 0 到 36500 的整数");Api.Endpoint(baseUrl.Text);if(string.IsNullOrWhiteSpace(model.Text))throw new Exception("请填写模型名称");if(days>0&&(settings.RetentionDays==0||days<settings.RetentionDays)&&!Confirm("缩短保留期限会删除过期记录和对话，继续？"))return;var next=new Settings{Theme=new[]{"system","light","dark"}[theme.SelectedIndex],RetentionDays=days,Excluded=excluded.Text,Continuous=continuous.Text,BaseUrl=baseUrl.Text.Trim().TrimEnd('/'),Model=model.Text.Trim()};if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();if(key.Password.Length>0)Credentials.Write(next.BaseUrl,key.Password);if(Startup.Enabled!=startup.IsChecked.Value)Startup.Set(startup.IsChecked.Value);store.SaveSettings(next);}settings=next;tracker.Settings=next;tracker.Reset();key.Clear();UpdateKeyStatus();ApplyTheme(next.Theme);LoadReport();if(!demo){store.Cleanup(days,DateTime.Today);recorder.Cache.Clear();}Refresh();notice.Text="设置已保存";}catch(Exception ex){Error(ex);}}
+ void LoadSettings(){
+  loadingSettings=true;
+  try{theme.SelectedIndex=settings.Theme=="light"?1:settings.Theme=="dark"?2:0;retention.Text=settings.RetentionDays.ToString();excluded.Text=settings.Excluded;continuous.Text=settings.Continuous;baseUrl.Text=settings.BaseUrl;model.Text=settings.Model;key.Clear();startup.IsChecked=readStartup();UpdateKeyStatus();dirtySettings.Clear();}
+  finally{loadingSettings=false;}
+ }
+ void BindAutomaticSettings(){
+  theme.SelectionChanged+=delegate{if(!loadingSettings)SaveAutomaticSetting("theme");};
+  startup.Checked+=delegate{if(!loadingSettings)SaveAutomaticSetting("startup");};startup.Unchecked+=delegate{if(!loadingSettings)SaveAutomaticSetting("startup");};
+  BindSettingInput(retention,"retention");BindSettingInput(excluded,"excluded");BindSettingInput(continuous,"continuous");BindSettingInput(baseUrl,"endpoint");BindSettingInput(model,"model");
+  key.PasswordChanged+=delegate{if(!loadingSettings&&!savingSettings){if(key.Password.Length>0)dirtySettings.Add("key");else dirtySettings.Remove("key");}};
+  key.LostKeyboardFocus+=delegate{if(dirtySettings.Contains("key"))SaveAutomaticSetting("key");};
+  key.KeyDown+=delegate(object sender,System.Windows.Input.KeyEventArgs e){if(e.Key==System.Windows.Input.Key.Escape){RestoreSettingInput("key");SettingsMessage("已取消本次密钥编辑",false);e.Handled=true;}else if(e.Key==System.Windows.Input.Key.Enter){SaveAutomaticSetting("key");e.Handled=true;}};
+ }
+ void BindSettingInput(TextBox input,string name){
+  input.TextChanged+=delegate{if(!loadingSettings&&!savingSettings)dirtySettings.Add(name);};
+  input.LostKeyboardFocus+=delegate{if(dirtySettings.Contains(name))SaveAutomaticSetting(name);};
+  input.KeyDown+=delegate(object sender,System.Windows.Input.KeyEventArgs e){if(e.Key==System.Windows.Input.Key.Escape){RestoreSettingInput(name);SettingsMessage("已恢复该项上次生效的值",false);e.Handled=true;}else if(e.Key==System.Windows.Input.Key.Enter&&!input.AcceptsReturn){SaveAutomaticSetting(name);e.Handled=true;}};
+ }
+ Settings CopySettings(){return Json.Decode<Settings>(Json.Encode(settings));}
+ void SettingsMessage(string text,bool error){settingsStatus.Text=text;settingsStatus.Foreground=error?Brushes.IndianRed:(Brush)FindResource("Muted");notice.Text=text;}
+ bool SaveAutomaticSetting(string name){
+  if(loadingSettings||savingSettings)return true;
+  if(name=="key"&&dirtySettings.Contains("endpoint")&&!SaveAutomaticSetting("endpoint"))return false;
+  savingSettings=true;
+  try{
+   if(name=="startup"){
+    bool desired=startup.IsChecked==true;if(desired!=readStartup())writeStartup(desired);
+    SettingsMessage(desired?"开机自启动已开启":"开机自启动已关闭",false);return true;
+   }
+   if(name=="key"){
+    if(key.Password.Length==0){dirtySettings.Remove(name);return true;}
+    Api.Endpoint(settings.BaseUrl);writeCredential(settings.BaseUrl,key.Password);
+    loadingSettings=true;try{key.Clear();}finally{loadingSettings=false;}
+    dirtySettings.Remove(name);UpdateKeyStatus();SettingsMessage("API Key 已自动保存",false);return true;
+   }
+   var next=CopySettings();
+   switch(name){
+    case "theme":next.Theme=new[]{"system","light","dark"}[theme.SelectedIndex];break;
+    case "retention":
+     int days;if(!int.TryParse(retention.Text,out days)||days<0||days>36500)throw new Exception("保留天数应为 0 到 36500 的整数");
+     if(busy)throw new Exception("AI 处理期间请稍后再调整记录保留期限");
+     if(days>0&&(settings.RetentionDays==0||days<settings.RetentionDays)&&!Confirm("缩短保留期限会删除过期记录，继续？")){loadingSettings=true;retention.Text=settings.RetentionDays.ToString();loadingSettings=false;dirtySettings.Remove(name);return true;}
+     next.RetentionDays=days;break;
+    case "excluded":next.Excluded=excluded.Text;break;
+    case "continuous":next.Continuous=continuous.Text;break;
+    case "endpoint":Api.Endpoint(baseUrl.Text);next.BaseUrl=baseUrl.Text.Trim().TrimEnd('/');break;
+    case "model":if(string.IsNullOrWhiteSpace(model.Text))throw new Exception("模型名称不能为空");next.Model=model.Text.Trim();break;
+    default:return true;
+   }
+   if(Json.Encode(next)==Json.Encode(settings)){dirtySettings.Remove(name);return true;}
+   bool recording=name=="excluded"||name=="continuous"||name=="retention";
+   if(recording){if(!demo&&!stopped)tracker.Feed(Sample());recorder.Flush();}
+   persistSettings(next);settings=next;tracker.Settings=next;
+   if(name=="excluded"||name=="continuous")tracker.Reset();
+   if(name=="theme")ApplyTheme(next.Theme);
+   if(name=="retention"&&!demo){store.Cleanup(next.RetentionDays,DateTime.Today);recorder.Cache.Clear();Refresh();}
+   if(name=="endpoint")UpdateKeyStatus();
+   dirtySettings.Remove(name);SettingsMessage("设置已自动保存",false);return true;
+  }catch(Exception ex){
+   if(name=="startup"||name=="theme"){
+    loadingSettings=true;try{if(name=="startup")startup.IsChecked=readStartup();else theme.SelectedIndex=settings.Theme=="light"?1:settings.Theme=="dark"?2:0;}finally{loadingSettings=false;}
+   }
+   SettingsMessage("未保存："+ex.Message,true);return false;
+  }finally{savingSettings=false;}
+ }
+ void RestoreSettingInput(string name){
+  loadingSettings=true;
+  try{switch(name){case "retention":retention.Text=settings.RetentionDays.ToString();break;case "excluded":excluded.Text=settings.Excluded;break;case "continuous":continuous.Text=settings.Continuous;break;case "endpoint":baseUrl.Text=settings.BaseUrl;break;case "model":model.Text=settings.Model;break;case "key":key.Clear();break;}dirtySettings.Remove(name);UpdateKeyStatus();}
+  finally{loadingSettings=false;}
+ }
+ bool FlushAutomaticSettings(bool discardInvalid=false,bool aiOnly=false){
+  var failed=new List<string>();
+  foreach(string name in aiOnly?new[]{"endpoint","model","key"}:new[]{"retention","excluded","continuous","endpoint","model","key"})if(dirtySettings.Contains(name)&&!SaveAutomaticSetting(name))failed.Add(name);
+  if(discardInvalid&&failed.Count>0){foreach(string name in failed)RestoreSettingInput(name);SettingsMessage("无效输入未保存，已保留原来的有效设置。",true);return true;}
+  return failed.Count==0;
+ }
+ void ApplyDeepSeekPreset(){
+  loadingSettings=true;try{baseUrl.Text="https://api.deepseek.com";model.Text="deepseek-flash";key.Clear();dirtySettings.Remove("key");}finally{loadingSettings=false;}
+  SaveAutomaticSetting("endpoint");SaveAutomaticSetting("model");
+ }
  string ReportPath(DateTime dateValue){return Path.Combine(store.Root,dateValue.ToString("yyyy-MM-dd")+".report.json");}
  void LoadReport(){
   string report="";string path=ReportPath(day);
@@ -400,11 +491,12 @@ public sealed class DesktopWindow:Window {
  }
  async Task RunAI(bool generateReport){
   if(busy||installing)return;
-  DateTime target=day;
+  if(!FlushAutomaticSettings(false,true))return;
+  DateTime target=day;var requestSettings=CopySettings();
   try{
    if(demo){aiProgress.Text="演示模式，不调用真实接口";return;}
-   string secret=Credentials.Read(settings.BaseUrl);
-   if(string.IsNullOrEmpty(secret)){Navigate(3);notice.Text="请填写并保存 API Key";return;}
+   string secret=Credentials.Read(requestSettings.BaseUrl);
+   if(string.IsNullOrEmpty(secret)){Navigate(3);notice.Text="请填写有效的 API Key";return;}
    recorder.Flush();
    var snapshot=recorder.Day(target).Select(x=>x.Copy()).ToList();
    if(snapshot.Count==0){aiProgress.Text="所选日期没有活动记录";return;}
@@ -413,7 +505,7 @@ public sealed class DesktopWindow:Window {
    Navigate(2);notice.Text="";
    var cacheSnapshot=new Dictionary<string,string>(categoryCache);
    var rulesSnapshot=classificationRules.Copy();
-   var engine=new BatchAI((messages,token)=>Api.Send(settings,messages,secret,token),message=>aiProgress.Text=message,cacheSnapshot,rulesSnapshot);
+   var engine=new BatchAI((messages,token)=>Api.Send(requestSettings,messages,secret,token),message=>aiProgress.Text=message,cacheSnapshot,rulesSnapshot);
    var result=await engine.Run(snapshot,generateReport,request.Token);
    request.Token.ThrowIfCancellationRequested();if(quitting)return;
    // Commit only after every batch and the final summary succeeded.
@@ -529,6 +621,32 @@ public sealed class DesktopWindow:Window {
    SetDay(realToday.AddDays(-2));CheckDayRollover(realToday.AddDays(2));check("midnight keeps historical selection",day==realToday.AddDays(-2));
    observedToday=realToday;SetDay(realToday);
    check("search box removed from header",!Descendants<TextBox>((DependencyObject)main.Children[0]).Any());
+   var originalSettings=CopySettings();var originalRead=readCredential;var originalWrite=writeCredential;var originalStartupRead=readStartup;var originalStartupWrite=writeStartup;
+   var testKeys=new Dictionary<string,string>();bool testStartup=false;
+   readCredential=url=>testKeys.ContainsKey(url)?testKeys[url]:"";writeCredential=(url,value)=>testKeys[url]=value;readStartup=()=>testStartup;writeStartup=value=>testStartup=value;
+   Navigate(3);
+   check("settings page no longer contains manual save or restore buttons",!Descendants<Button>(pages[3]).Any(x=>Convert.ToString(x.Content)=="保存设置"||Convert.ToString(x.Content)=="恢复已保存设置"));
+   theme.SelectedIndex=1;check("theme selection saves immediately",store.LoadSettings().Theme=="light");
+   retention.Text="invalid";SaveAutomaticSetting("retention");startup.IsChecked=true;
+   check("startup toggle applies immediately even with invalid unrelated input",testStartup&&settings.RetentionDays==originalSettings.RetentionDays);
+   retention.Text=originalSettings.RetentionDays.ToString();SaveAutomaticSetting("retention");
+   excluded.Text="example-app";LoseSettingFocus(excluded);
+   check("input focus loss saves settings to disk and active tracker",store.LoadSettings().Excluded=="example-app"&&tracker.Settings.Excluded=="example-app");
+   string savedEndpoint=settings.BaseUrl;baseUrl.Text="invalid";LoseSettingFocus(baseUrl);check("invalid endpoint keeps last saved endpoint",settings.BaseUrl==savedEndpoint&&store.LoadSettings().BaseUrl==savedEndpoint);
+   baseUrl.Text=savedEndpoint;LoseSettingFocus(baseUrl);
+   key.Password="test-autosave-secret";LoseSettingFocus(key);
+   check("API key auto-save uses credential store and clears visible input",testKeys.ContainsKey(savedEndpoint)&&key.Password.Length==0&&savedKeyHint.Visibility==Visibility.Visible);
+   check("API key is absent from settings JSON",!File.ReadAllText(Path.Combine(store.Root,"settings.json")).Contains("test-autosave-secret"));
+   baseUrl.Text="invalid";key.Password="must-not-replace-saved-key";FlushAutomaticSettings(true);
+   check("closing with invalid endpoint preserves old key and permits exit",baseUrl.Text==savedEndpoint&&key.Password.Length==0&&testKeys[savedEndpoint]=="test-autosave-secret"&&dirtySettings.Count==0);
+   retention.Text="invalid";model.Text="autosaved-model";FlushAutomaticSettings(true);
+   check("closing saves valid pending edits independently of invalid inputs",store.LoadSettings().Model=="autosaved-model"&&retention.Text==settings.RetentionDays.ToString()&&dirtySettings.Count==0);
+   var normalPersist=persistSettings;persistSettings=next=>{throw new IOException("Test unavailable storage");};theme.SelectedIndex=2;
+   check("failed automatic write preserves saved theme and shows error",settings.Theme=="light"&&theme.SelectedIndex==1&&settingsStatus.Text.Contains("未保存"));persistSettings=normalPersist;
+   settings=originalSettings;store.SaveSettings(settings);tracker.Settings=settings;readCredential=originalRead;writeCredential=originalWrite;readStartup=originalStartupRead;writeStartup=originalStartupWrite;LoadSettings();SettingsMessage("设置会自动保存；输入框在编辑完成后生效。",false);notice.Text="";
+   ApplyTheme("dark");Navigate(3);await Dispatcher.Yield(DispatcherPriority.Background);Snapshot(Path.Combine(folder,"settings-auto-dark.png"));
+   Hide();tray.Visible=true;NativeAppearance.TestTrayLeftClick(tray);await Task.Delay(200);await Dispatcher.Yield(DispatcherPriority.Background);
+   check("native left tray click restores main window",IsVisible&&WindowState==WindowState.Normal);tray.Visible=false;
    string originalUrl=baseUrl.Text;readCredential=url=>url==originalUrl?"dummy-test-secret":"";
    key.Clear();UpdateKeyStatus();check("saved key visibly indicated without plaintext",keyStatus.Text.Contains("已保存")&&savedKeyHint.Visibility==Visibility.Visible&&key.Password.Length==0);
    key.Password="dummy-replacement";check("replacement key indicated as pending",keyStatus.Text=="新密钥待保存"&&savedKeyHint.Visibility==Visibility.Collapsed);key.Clear();
@@ -605,10 +723,11 @@ public sealed class DesktopWindow:Window {
    check("title-only manual category leaves other titles unchanged",recorder.Day(day).Single(x=>x.App=="scope-test"&&x.Title=="标题A").Category=="学习"&&recorder.Day(day).Single(x=>x.App=="scope-test"&&x.Title=="标题B").Category=="娱乐"&&!classificationRules.IsWholeSoftware("scope-test"));
    activities.SelectedItems.Clear();activities.SelectedItem=activities.Items.Cast<ActivityRow>().First(x=>x.App=="scope-test"&&x.Title=="标题A");categoryScope.SelectedIndex=1;ApplyAIScope();check("AI-only scope changes grouping without rewriting categories",classificationRules.IsWholeSoftware("scope-test")&&recorder.Day(day).Single(x=>x.App=="scope-test"&&x.Title=="标题A").Category=="学习");
    await Dispatcher.Yield(DispatcherPriority.Background);Snapshot(Path.Combine(folder,"classification-scope.png"));
-   await UpdateChecks.Run(check,folder);await BatchChecks.Run(check);File.WriteAllLines(Path.Combine(folder,"checks.txt"),checks);
+   LoadSettings();await UpdateChecks.Run(check,folder);await BatchChecks.Run(check);File.WriteAllLines(Path.Combine(folder,"checks.txt"),checks);
   }catch(Exception ex){File.WriteAllText(Path.Combine(folder,"checks.txt"),ex.ToString());Environment.ExitCode=1;}
   finally{quitting=true;Close();}
  }
+ static void LoseSettingFocus(UIElement field){field.RaiseEvent(new System.Windows.Input.KeyboardFocusChangedEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,Environment.TickCount,field,null){RoutedEvent=System.Windows.Input.Keyboard.LostKeyboardFocusEvent});}
  static IEnumerable<T> Descendants<T>(DependencyObject root) where T:DependencyObject{
   for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var child=VisualTreeHelper.GetChild(root,i);if(child is T)yield return (T)child;foreach(var nested in Descendants<T>(child))yield return nested;}
  }
