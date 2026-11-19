@@ -1,5 +1,16 @@
 PASS: navigation and dropdown lifecycle
-PASS: statistics page removed and navigation has four pages
+PASS: statistics page removed and about is the fifth page
+PASS: about hides date controls and follows settings
+PASS: about shows current version
+PASS: update check compares numeric stable versions
+PASS: update check reads subsequent tag pages
+PASS: empty version list does not report latest incorrectly
+PASS: cancelled update check avoids another request
+PASS: checking update disables duplicate clicks
+PASS: new version exposes update action
+PASS: current version reports no update
+PASS: failed update check permits retry
+PASS: GitHub rate limit has a clear recoverable message
 PASS: AI scope button has label marker and explanation
 PASS: next day is disabled on today
 PASS: next day is enabled on history
