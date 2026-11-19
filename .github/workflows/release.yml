@@ -1,25 +1,39 @@
-﻿name: Publish Windows release
+name: Publish Windows release
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish
+        required: true
+        type: string
 permissions:
   contents: write
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Build and package
         shell: powershell
-        run: ./source/package.ps1
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid release tag' }
+          ./source/package.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Package failed' }
+          if ((Get-Item DayTrace.exe).VersionInfo.ProductVersion -ne $env:RELEASE_TAG.Substring(1)) { throw 'Tag and binary version differ' }
       - name: Publish verified update assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $version = $env:RELEASE_TAG.Substring(1)
           $folder = "outputs/DayTrace-v$version"
-          gh release create $env:GITHUB_REF_NAME "$folder/DayTrace.exe" "$folder/update.json" "outputs/DayTrace-v$version.zip" --verify-tag --draft --title "拾时 $version" --notes-file RELEASE_NOTES.md
+          gh release create $env:RELEASE_TAG "$folder/DayTrace.exe" "$folder/update.json" "outputs/DayTrace-v$version.zip" --verify-tag --draft --title "拾时 $version" --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-          gh release edit $env:GITHUB_REF_NAME --draft=false --latest
+          gh release edit $env:RELEASE_TAG --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publishing failed' }
