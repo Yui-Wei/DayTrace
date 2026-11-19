@@ -29,4 +29,4 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\source\build.ps1
 
 用户数据保存在 `%LOCALAPPDATA%\DayTrace`，API Key 保存在 Windows 凭据管理器；迁移源码目录不会迁移或删除这些数据。
 
-Git 跟踪源码、构建脚本及说明。生成的程序、压缩包、临时文件及本地用户数据不纳入版本管理。正式版本标记为 `v1.0.0`，历史标签 `v6.8` 保留。后续按 [版本规则](VERSIONING.md) 发布。
+Git 跟踪源码、构建脚本及说明。生成的程序、压缩包、临时文件及本地用户数据不纳入版本管理。正式版本标记为 `v1.0.0`。后续按 [版本规则](VERSIONING.md) 发布。
