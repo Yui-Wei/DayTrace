@@ -42,6 +42,9 @@ public sealed class DesktopWindow:Window {
  readonly Storage store; readonly Recorder recorder;readonly Tracker tracker;Settings settings;readonly bool demo;
  readonly DispatcherTimer timer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(2)};
  readonly Forms.NotifyIcon tray=new Forms.NotifyIcon();
+ readonly ContextMenu trayMenu=new ContextMenu();
+ MenuItem trayPauseItem;
+ bool themeIsDark;
  readonly Grid main=new Grid();readonly ContentControl content=new ContentControl();readonly List<FrameworkElement> pages=new List<FrameworkElement>();readonly List<Button> navigation=new List<Button>();
  readonly TextBlock title=Text("今日概览",32,true),status=Text("正在记录",15),notice=Text("",16);
  readonly TextBox date=Input(); readonly Button pause,nextDay;
@@ -70,6 +73,7 @@ public sealed class DesktopWindow:Window {
  public DesktopWindow(Storage storage,bool demonstration){
   store=storage;demo=demonstration;updatePreferences=UpdatePreferences.Load(UpdatePreferencesPath);notifyUpdate=NotifyUpdate;settings=store.LoadSettings();classificationRules=ClassificationRules.Load(RulesPath);LoadCategoryCache();recorder=new Recorder(store);recorder.CategoryLookup=LookupCategory;tracker=new Tracker(recorder,settings);
   Title="拾时 · DayTrace";FontFamily=new FontFamily("Microsoft YaHei UI");FontSize=18;Width=Math.Min(1320,SystemParameters.WorkArea.Width);Height=Math.Min(880,SystemParameters.WorkArea.Height);MinWidth=940;MinHeight=630;WindowStartupLocation=WindowStartupLocation.CenterScreen;SetResourceReference(BackgroundProperty,"Canvas");SetResourceReference(ForegroundProperty,"Ink");ApplyTheme(demo?"light":settings.Theme);
+  SourceInitialized+=delegate{NativeAppearance.Apply(this,themeIsDark);};
   var shell=new Grid();shell.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(240)});shell.ColumnDefinitions.Add(new ColumnDefinition());Content=shell;
   var side=new Grid{Margin=new Thickness(15,20,15,18)};side.RowDefinitions.Add(new RowDefinition{Height=new GridLength(76)});side.RowDefinitions.Add(new RowDefinition());side.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});shell.Children.Add(side);var brand=new StackPanel{Orientation=Orientation.Horizontal};
   using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){var decoder=new IconBitmapDecoder(iconStream,BitmapCreateOptions.None,BitmapCacheOption.OnLoad);var bitmap=decoder.Frames.OrderByDescending(frame=>frame.PixelWidth).First();bitmap.Freeze();Icon=bitmap;brand.Children.Add(new Image{Source=bitmap,Width=36,Height=36,Margin=new Thickness(0,0,10,0),VerticalAlignment=VerticalAlignment.Center});}
@@ -80,8 +84,8 @@ public sealed class DesktopWindow:Window {
   var header=new Grid{Margin=new Thickness(0,0,0,15)};header.Children.Add(title);main.Children.Add(header);
   date.Text=day.ToString("yyyy-MM-dd");date.Width=150;date.Margin=new Thickness(0,0,8,0);date.ToolTip="日期格式 yyyy-MM-dd";date.LostKeyboardFocus+=delegate{CommitDate();};date.KeyDown+=delegate(object s,System.Windows.Input.KeyEventArgs e){if(e.Key==System.Windows.Input.Key.Enter){CommitDate();e.Handled=true;}};dateTools.Children.Add(date);dateTools.Children.Add(Button("日历",ShowCalendar));dateTools.Children.Add(Button("前一天",delegate{SetDay(day.AddDays(-1));}));nextDay=Button("后一天",delegate{SetDay(day.AddDays(1));});dateTools.Children.Add(nextDay);UpdateDateNavigation(DateTime.Today);dateTools.Children.Add(Button("今天",delegate{SetDay(DateTime.Today);}));dateTools.Children.Add(Button("刷新",Refresh));dateTools.Margin=new Thickness(0,0,0,14);Grid.SetRow(dateTools,1);main.Children.Add(dateTools);Grid.SetRow(content,2);main.Children.Add(content);notice.Margin=new Thickness(0,8,0,0);Grid.SetRow(notice,3);main.Children.Add(notice);
   pages.Add(Scroll(overview));pages.Add(BuildActivities());classifyButton=Button("AI 分类",async delegate{await RunAI(false);});reportButton=Button("生成日报",async delegate{await RunAI(true);});cancelButton=Button("取消生成",delegate{if(request!=null)request.Cancel();});cancelButton.IsEnabled=false;pages.Add(BuildAnalysis());settingsScroll=Scroll(BuildSettings());var settingsPage=new DockPanel();var saveBar=Bar(Button("保存设置",SaveSettings),Button("恢复已保存设置",LoadSettings));saveBar.Margin=new Thickness(0,10,0,0);DockPanel.SetDock(saveBar,Dock.Bottom);settingsPage.Children.Add(saveBar);settingsPage.Children.Add(settingsScroll);pages.Add(settingsPage);pages.Add(Scroll(BuildAbout()));LoadSettings();Navigate(0);
-  var menu=new Forms.ContextMenuStrip();menu.Items.Add("打开拾时",null,delegate{Dispatcher.Invoke((Action)Restore);});menu.Items.Add("暂停 / 继续",null,delegate{Dispatcher.Invoke((Action)TogglePause);});menu.Items.Add("设置",null,delegate{Dispatcher.Invoke((Action)delegate{Restore();Navigate(3);});});menu.Items.Add("退出",null,delegate{Dispatcher.Invoke((Action)Exit);});using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.ContextMenuStrip=menu;tray.Visible=!demo;tray.DoubleClick+=delegate{Dispatcher.Invoke((Action)Restore);};tray.BalloonTipClicked+=delegate{Dispatcher.Invoke((Action)delegate{Restore();Navigate(4);});};
-  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;Error(ex);return;}if(updateRequest!=null)updateRequest.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();Application.Current.Shutdown();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
+  BuildTrayMenu();using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.MouseUp+=delegate(object sender,Forms.MouseEventArgs e){if(e.Button==Forms.MouseButtons.Right)Dispatcher.Invoke((Action)ShowTrayMenu);};tray.Visible=!demo;tray.DoubleClick+=delegate{Dispatcher.Invoke((Action)Restore);};tray.BalloonTipClicked+=delegate{Dispatcher.Invoke((Action)delegate{Restore();Navigate(4);});};
+  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;Error(ex);return;}trayMenu.IsOpen=false;if(updateRequest!=null)updateRequest.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();Application.Current.Shutdown();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
   timer.Tick+=delegate{try{if(!stopped)tracker.Feed(Sample());CheckDayRollover(DateTime.Today);if(++ticks%5==0)recorder.Flush();if(ticks%15==0&&IsVisible){if(settings.Theme=="system")ApplyTheme(settings.Theme);if(selectedPage==0)Refresh();}if(lastCleanup!=DateTime.Today){recorder.Flush();store.Cleanup(settings.RetentionDays,DateTime.Today);recorder.Cache.Clear();lastCleanup=DateTime.Today;}}catch(Exception ex){stopped=true;timer.Stop();UpdateRecordingStatus();Error(ex);}};
   if(demo){var start=day.AddHours(9).ToUniversalTime();recorder.Add(start,start.AddMinutes(42),"WINWORD","项目方案","工作");recorder.Add(start.AddMinutes(42),start.AddMinutes(60),"msedge","C# 文档","学习");recorder.Add(start.AddMinutes(60),start.AddMinutes(75),"离开","无操作","离开");status.Text="演示数据";}else{store.Cleanup(settings.RetentionDays,DateTime.Today);tracker.Feed(Sample());timer.Start();}Loaded+=async delegate{if(!demo)await CheckAutomaticUpdates(DateTime.Today);};Refresh();LoadReport();UpdateRecordingStatus();
  }
@@ -107,7 +111,27 @@ public sealed class DesktopWindow:Window {
  }
  static Border Card(UIElement body){var b=new Border{Child=body,Padding=new Thickness(18),Margin=new Thickness(0,0,0,16),CornerRadius=new CornerRadius(6),BorderThickness=new Thickness(1)};b.SetResourceReference(Border.BackgroundProperty,"Surface");b.SetResourceReference(Border.BorderBrushProperty,"Line");return b;}
  public static string Duration(double seconds){var t=TimeSpan.FromSeconds(seconds);return t.TotalHours>=1?string.Format("{0} 小时 {1} 分",(int)t.TotalHours,t.Minutes):string.Format("{0} 分 {1} 秒",(int)t.TotalMinutes,t.Seconds);}
- void ApplyTheme(string choice){bool dark=choice=="dark";if(choice=="system")using(var k=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))dark=k!=null&&Convert.ToInt32(k.GetValue("AppsUseLightTheme",1))==0;string[] names={"Canvas","Surface","Field","Ink","Muted","Line","Accent","Selection","NavigationHover"};string[] colors=dark?new[]{"#18191D","#28292F","#373942","#ECEDF2","#9296A2","#3A3C44","#0A84FF","#364657","#303946"}:new[]{"#F2F7E1","#FCFCF7","#FAFAFA","#1C1E26","#65666B","#E1E4DC","#0066B6","#DDE7D4","#E3EDDA"};for(int i=0;i<names.Length;i++)Application.Current.Resources[names[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));if(!dark)Application.Current.Resources["Canvas"]=new LinearGradientBrush(Color.FromRgb(234,249,231),Color.FromRgb(250,244,222),20);if(pages.Count==5)Navigate(selectedPage);UpdateRecordingStatus();}
+ void ApplyTheme(string choice){bool dark=choice=="dark";if(choice=="system")using(var k=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))dark=k!=null&&Convert.ToInt32(k.GetValue("AppsUseLightTheme",1))==0;string[] names={"Canvas","Surface","Field","Ink","Muted","Line","Accent","Selection","NavigationHover"};string[] colors=dark?new[]{"#18191D","#28292F","#373942","#ECEDF2","#9296A2","#3A3C44","#0A84FF","#364657","#303946"}:new[]{"#F2F7E1","#FCFCF7","#FAFAFA","#1C1E26","#65666B","#E1E4DC","#0066B6","#DDE7D4","#E3EDDA"};for(int i=0;i<names.Length;i++)Application.Current.Resources[names[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));if(!dark)Application.Current.Resources["Canvas"]=new LinearGradientBrush(Color.FromRgb(234,249,231),Color.FromRgb(250,244,222),20);themeIsDark=dark;NativeAppearance.Apply(this,dark);if(pages.Count==5)Navigate(selectedPage);UpdateRecordingStatus();}
+ void BuildTrayMenu(){
+  trayMenu.SetResourceReference(StyleProperty,"TrayContextMenu");trayMenu.Placement=PlacementMode.MousePoint;trayMenu.StaysOpen=false;
+  trayMenu.Opened+=delegate{NativeAppearance.FocusMenu(trayMenu);};
+  AddTrayAction("打开拾时",Restore);
+  trayPauseItem=AddTrayAction("暂停记录",TogglePause);
+  AddTrayAction("设置",delegate{Restore();Navigate(3);});
+  var separator=new Separator();separator.SetResourceReference(StyleProperty,"TraySeparator");trayMenu.Items.Add(separator);
+  AddTrayAction("退出",Exit);
+ }
+ MenuItem AddTrayAction(string name,Action action){
+  var item=new MenuItem{Header=name};item.SetResourceReference(StyleProperty,"TrayMenuItem");
+  item.Click+=delegate{trayMenu.IsOpen=false;action();};trayMenu.Items.Add(item);return item;
+ }
+ void ShowTrayMenu(){
+  if(quitting)return;
+  if(settings.Theme=="system")ApplyTheme(settings.Theme);
+  trayPauseItem.Header=tracker.Paused?"继续记录":"暂停记录";
+  trayPauseItem.IsEnabled=!stopped;
+  trayMenu.IsOpen=true;
+ }
  FrameworkElement BuildActivities(){var root=new DockPanel();var tools=Bar(Button("导出 CSV",Export),Button("删除当天",delegate{Delete(false);}),Button("删除全部历史",delegate{Delete(true);}));DockPanel.SetDock(tools,Dock.Top);root.Children.Add(tools);var footer=Bar(categoryScope,category,Button("修改分类",ApplyManualCategory),AIScopeButton());DockPanel.SetDock(footer,Dock.Bottom);root.Children.Add(footer);Columns(activities);activities.Columns.Add(new DataGridTextColumn{Header="分类范围",Binding=new Binding("Mode"),Width=new DataGridLength(1.1,DataGridLengthUnitType.Star)});activities.SelectionChanged+=delegate{var selected=activities.SelectedItem as ActivityRow;if(selected!=null)categoryScope.SelectedIndex=classificationRules.IsWholeSoftware(selected.App)?1:0;};root.Children.Add(Card(activities));return root;}
  Button AIScopeButton(){
   var button=Button("仅设置 AI 分类范围  ⓘ",ApplyAIScope);
@@ -400,13 +424,30 @@ public sealed class DesktopWindow:Window {
   status.Text=stopped?"记录已停止":demo?"演示数据":tracker!=null&&tracker.Paused?"已暂停":"正在记录";
   status.Foreground=new SolidColorBrush(stopped?Color.FromRgb(226,90,90):tracker!=null&&tracker.Paused?Color.FromRgb(218,155,48):Color.FromRgb(27,173,132));
  }
- async void Restore(){Show();WindowState=WindowState.Normal;Activate();try{await CheckAutomaticUpdates(DateTime.Today);}catch(Exception ex){Error(ex);}}
+ async void Restore(){trayMenu.IsOpen=false;Show();WindowState=WindowState.Normal;Activate();try{await CheckAutomaticUpdates(DateTime.Today);}catch(Exception ex){Error(ex);}}
  void Exit(){if(busy&&!Confirm("取消当前 AI 操作并退出？"))return;if(request!=null)request.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();quitting=true;Close();}
  public async Task Verify(string folder){
   try{
    Directory.CreateDirectory(folder);var checks=new List<string>();
    Action<string,bool> check=delegate(string name,bool pass){if(!pass)throw new Exception("FAIL: "+name);checks.Add("PASS: "+name);};
    for(int repeat=0;repeat<6;repeat++){for(int i=0;i<5;i++)Navigate(i);ApplyTheme(repeat%2==0?"dark":"light");theme.IsDropDownOpen=true;await Dispatcher.Yield(DispatcherPriority.Background);theme.IsDropDownOpen=false;}
+   string originalAppearance=settings.Theme;
+   foreach(string appearance in new[]{"light","dark"}){
+    settings.Theme=appearance;ApplyTheme(appearance);await Dispatcher.Yield(DispatcherPriority.Background);
+    NativeAppearance.Capture(this,Path.Combine(folder,"window-frame-"+appearance+".png"));
+    check(appearance+" native caption color accepted by Windows",NativeAppearance.LastCaptionResult==0);
+    check(appearance+" native frame and caption text colors accepted by Windows",NativeAppearance.LastBorderResult==0&&NativeAppearance.LastTextResult==0);
+    ShowTrayMenu();await Dispatcher.Yield(DispatcherPriority.Background);trayMenu.UpdateLayout();
+    var menuImage=new RenderTargetBitmap((int)Math.Ceiling(trayMenu.ActualWidth),(int)Math.Ceiling(trayMenu.ActualHeight),96,96,PixelFormats.Pbgra32);menuImage.Render(trayMenu);var menuEncoder=new PngBitmapEncoder();menuEncoder.Frames.Add(BitmapFrame.Create(menuImage));using(var file=File.Create(Path.Combine(folder,"tray-menu-"+appearance+".png")))menuEncoder.Save(file);
+    check(appearance+" tray menu opens with larger readable rows",trayMenu.IsOpen&&trayMenu.ActualWidth>=230&&trayPauseItem.ActualHeight>=44&&trayPauseItem.FontSize>=18);
+    trayMenu.IsOpen=false;
+   }
+   settings.Theme=originalAppearance;
+   for(int repeat=0;repeat<12;repeat++){ShowTrayMenu();await Dispatcher.Yield(DispatcherPriority.Background);trayMenu.IsOpen=false;}
+   ShowTrayMenu();trayPauseItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));ShowTrayMenu();
+   check("tray pause action closes menu and next open shows continue",tracker.Paused&&trayPauseItem.Header.ToString()=="继续记录");
+   trayPauseItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));check("tray continue action restores recording",!tracker.Paused&&!trayMenu.IsOpen);
+   Navigate(4);
    check("navigation and dropdown lifecycle",content.Content==pages[4]);
    check("statistics page removed and about is the fifth page",pages.Count==5&&navigation.Count==5&&!navigation.Any(x=>x.Content.ToString().Contains("使用统计")));
    check("about hides date controls and follows settings",navigation[4].Content.ToString().Contains("关于")&&dateTools.Visibility==Visibility.Collapsed&&title.Text.Contains("关于"));

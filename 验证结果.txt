@@ -1,3 +1,11 @@
+PASS: light native caption color accepted by Windows
+PASS: light native frame and caption text colors accepted by Windows
+PASS: light tray menu opens with larger readable rows
+PASS: dark native caption color accepted by Windows
+PASS: dark native frame and caption text colors accepted by Windows
+PASS: dark tray menu opens with larger readable rows
+PASS: tray pause action closes menu and next open shows continue
+PASS: tray continue action restores recording
 PASS: navigation and dropdown lifecycle
 PASS: statistics page removed and about is the fifth page
 PASS: about hides date controls and follows settings
