@@ -1,0 +1,26 @@
+# Generated binaries and packages
+/DayTrace.exe
+*.pdb
+*.zip
+/bin/
+/obj/
+/outputs/
+/work/
+
+# Local tools and editor files
+.vs/
+.vscode/
+*.user
+*.suo
+*.tmp
+*.log
+
+# Local credentials and activity data
+.env
+.env.*
+!.env.example
+/DayTrace/
+/data/
+/settings.json
+/classification-rules.json
+/classification-cache.json

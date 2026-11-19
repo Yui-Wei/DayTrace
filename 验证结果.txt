@@ -1,0 +1,72 @@
+PASS: navigation and dropdown lifecycle
+PASS: statistics page removed and navigation has four pages
+PASS: AI scope button has label marker and explanation
+PASS: next day is disabled on today
+PASS: next day is enabled on history
+PASS: midnight follows current day
+PASS: midnight keeps historical selection
+PASS: search box removed from header
+PASS: saved key visibly indicated without plaintext
+PASS: replacement key indicated as pending
+PASS: key state isolated by API address
+PASS: newly captured activities reuse cached classification immediately
+PASS: existing unlabeled activities inherit cached labels
+PASS: classification migrates from old labeled history
+PASS: timeline endpoints and midpoint use same coordinates as ticks
+PASS: timeline hover displays exact local time and task
+PASS: timeline distinguishes gaps and midnight
+PASS: all category legend colors are distinct
+PASS: hover details are inline and contain task
+PASS: timeline hover does not create a floating tooltip
+PASS: wheel over short timeline details scrolls the overview
+PASS: wheel at details bottom continues scrolling the overview
+PASS: long timeline details retain their own wheel scrolling
+PASS: hover details clear outside the plot
+PASS: click expands the selected hour
+PASS: hour endpoints and midpoint remain aligned
+PASS: zoomed hover finds the task at the expanded time
+PASS: second click expands two minutes
+PASS: two minute coordinates and hover stay aligned
+PASS: third click returns to all-day view
+PASS: day-end click expands last hour
+PASS: empty hour can be expanded
+PASS: zoom survives periodic refresh
+PASS: two minute zoom survives periodic refresh
+PASS: zoom can be restored after refresh
+PASS: last two minutes end exactly at midnight
+PASS: overview cards have horizontal gap
+PASS: recording and paused status colors differ
+PASS: AI page has no chat composer
+PASS: whole-software manual category updates all titles and history
+PASS: whole-software manual cache applies to new titles
+PASS: title-only manual category leaves other titles unchanged
+PASS: AI-only scope changes grouping without rewriting categories
+PASS: 916 fragments compress into 12 distinct app/title activities
+PASS: effective seconds and hourly totals stay exact
+PASS: request omits original GUIDs and record objects
+PASS: repeated-record payload reduced by at least 70 percent
+PASS: merged window excludes inactive gap
+PASS: activity crossing hour boundary split into exact hourly totals
+PASS: one request generates report and maps all 916 categories
+PASS: compressed request substantially smaller than old full input
+PASS: classification cache avoids all repeat network calls
+PASS: cached categories still permit one-shot report
+PASS: known manual category reused without overwriting labeled row
+PASS: browser titles are not collapsed into one program category
+PASS: many distinct activities retain bounded batching and final merge
+PASS: oversized compact batch automatically splits
+PASS: authentication failure makes only one call
+PASS: cancel stops before another batch
+PASS: aggregation never modifies original records
+PASS: classification cache contains only hashed keys and category values
+PASS: disjoint appearances use hourly totals without unbounded window lists
+PASS: midnight endpoint represented as 24:00
+PASS: away-only day avoids AI and generates exact local totals
+PASS: music and explorer group by software while browser groups by title
+PASS: software grouping omits changing song and folder titles
+PASS: software AI classification maps to every original fragment
+PASS: software cache covers brand-new titles without API call
+PASS: per-app overrides support both scope directions
+PASS: app-level keys separate from empty window titles
+PASS: software scope preferences persist and reload
+PASS: measured fixture: old input 143150 chars, compact input 3467 chars, 1 request
