@@ -9,6 +9,10 @@ namespace DayTrace {
  public static class NativeAppearance {
   [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr FindWindow(string className,string title);
+  [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr window,int command);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window,int message,IntPtr w,IntPtr l);
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window,out NativeRect bounds);
   [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr window,IntPtr dc,uint flags);
   [StructLayout(LayoutKind.Sequential)] struct NativeRect {public int Left,Top,Right,Bottom;}
@@ -28,6 +32,20 @@ namespace DayTrace {
    }catch(DllNotFoundException){}catch(EntryPointNotFoundException){}
   }
   static int Set(IntPtr handle,int attribute,int value){return DwmSetWindowAttribute(handle,attribute,ref value,4);}
+  public static bool ShowExistingWindow(){
+   IntPtr window=FindWindow(null,"拾时 · DayTrace");if(window==IntPtr.Zero)return false;
+   ShowWindowAsync(window,9);
+   for(int i=0;i<10&&!IsWindowVisible(window);i++)System.Threading.Thread.Sleep(50);
+   if(!IsWindowVisible(window))return false;SetForegroundWindow(window);return true;
+  }
+  public static void TestTrayRightClick(System.Windows.Forms.NotifyIcon tray){
+   var flags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
+   var type=typeof(System.Windows.Forms.NotifyIcon);
+   var window=(System.Windows.Forms.NativeWindow)type.GetField("window",flags).GetValue(tray);
+   var message=(int)type.GetField("WM_TRAYMOUSEMESSAGE",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static).GetRawConstantValue();
+   var id=(int)type.GetField("id",flags).GetValue(tray);
+   PostMessage(window.Handle,message,new IntPtr(id),new IntPtr(0x205));
+  }
   public static void FocusMenu(ContextMenu menu){var source=PresentationSource.FromVisual(menu) as HwndSource;if(source!=null)SetForegroundWindow(source.Handle);menu.Focus();}
   public static void Capture(Window window,string path){
    var handle=new WindowInteropHelper(window).Handle;NativeRect bounds;if(!GetWindowRect(handle,out bounds))return;

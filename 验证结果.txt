@@ -1,6 +1,7 @@
 PASS: single instance acquires first ownership
 PASS: active owner prevents duplicate instance
 PASS: second launch can activate existing instance
+PASS: unresponsive activation is not silently reported as success
 PASS: clean exit releases instance ownership
 PASS: abandoned instance lock does not falsely block startup
 PASS: light native caption color accepted by Windows

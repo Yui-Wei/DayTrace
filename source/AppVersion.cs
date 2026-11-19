@@ -6,6 +6,6 @@
 [assembly: AssemblyInformationalVersion(DayTrace.AppVersion.Current)]
 namespace DayTrace {
  public static class AppVersion {
-  public const string Current = "1.1.3";
+  public const string Current = "1.1.4";
  }
 }

@@ -29,17 +29,23 @@ public static class Desktop {
   using(var instance=new SingleInstance("Local\\DayTrace."+Environment.UserName+(demo?".Demo":""))) {
    if(!instance.TryAcquire(0)){
     if(instance.ActivateExisting())return 0;
-    if(!instance.TryAcquire(2000)){Forms.MessageBox.Show("另一个拾时进程尚未退出，请稍后重试。","拾时");return 0;}
+    if(!instance.TryAcquire(2500)){
+     if(!demo&&!instance.PeerUsesAcknowledgements&&NativeAppearance.ShowExistingWindow())return 0;
+     Forms.MessageBox.Show("后台拾时没有响应，未能打开窗口。请先结束旧的拾时进程后重试。","拾时");return 1;
+    }
    }
    var app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
    using(var stream=typeof(Desktop).Assembly.GetManifestResourceStream("Theme.xaml"))app.Resources.MergedDictionaries.Add((ResourceDictionary)XamlReader.Load(stream));
    string root=demo?Path.Combine(Path.GetTempPath(),"DayTrace-v6-"+Guid.NewGuid().ToString("N")):Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"DayTrace");
    try{
     var w=new DesktopWindow(new Storage(root),demo);app.MainWindow=w;
-    instance.Listen(()=>{if(!app.Dispatcher.HasShutdownStarted)app.Dispatcher.BeginInvoke((Action)w.ActivateExistingWindow);});
+    instance.Listen(()=>{if(!app.Dispatcher.HasShutdownStarted)app.Dispatcher.BeginInvoke((Action)delegate{if(w.ActivateExistingWindow())instance.AcknowledgeActivation();});});
+    w.Closed+=delegate{instance.Dispose();Environment.Exit(0);};
     if(demo)w.Loaded+=async delegate{
      if(args.Contains("--linger-worker"))new Thread(()=>Thread.Sleep(20000)){IsBackground=false}.Start();
-     if(args.Contains("--exit-check"))await w.VerifyTrayExit(args.Last(),args.Contains("--hidden"));else await w.Verify(args.Last());
+     if(args.Contains("--slow-exit"))w.exitCheckDelay=3000;
+     if(args.Contains("--activation-check")){await w.VerifyActivationLifecycle(args.Last());return;}
+     if(args.Contains("--exit-check"))await w.VerifyTrayExit(args.Last(),args.Contains("--hidden"),args.Contains("--native-tray"));else await w.Verify(args.Last());
     };
     w.Show();if(args.Contains("--minimized"))w.Hide();app.Run();return 0;
    }catch(Exception ex){if(demo)File.WriteAllText(Path.Combine(Environment.CurrentDirectory,"work","wpf-error.txt"),ex.ToString());else Forms.MessageBox.Show(ex.ToString(),"启动失败");return 1;}
@@ -101,8 +107,8 @@ public sealed class DesktopWindow:Window {
   var header=new Grid{Margin=new Thickness(0,0,0,15)};header.Children.Add(title);main.Children.Add(header);
   date.Text=day.ToString("yyyy-MM-dd");date.Width=150;date.Margin=new Thickness(0,0,8,0);date.ToolTip="日期格式 yyyy-MM-dd";date.LostKeyboardFocus+=delegate{CommitDate();};date.KeyDown+=delegate(object s,System.Windows.Input.KeyEventArgs e){if(e.Key==System.Windows.Input.Key.Enter){CommitDate();e.Handled=true;}};dateTools.Children.Add(date);dateTools.Children.Add(Button("日历",ShowCalendar));dateTools.Children.Add(Button("前一天",delegate{SetDay(day.AddDays(-1));}));nextDay=Button("后一天",delegate{SetDay(day.AddDays(1));});dateTools.Children.Add(nextDay);UpdateDateNavigation(DateTime.Today);dateTools.Children.Add(Button("今天",delegate{SetDay(DateTime.Today);}));dateTools.Children.Add(Button("刷新",Refresh));dateTools.Margin=new Thickness(0,0,0,14);Grid.SetRow(dateTools,1);main.Children.Add(dateTools);Grid.SetRow(content,2);main.Children.Add(content);notice.Margin=new Thickness(0,8,0,0);Grid.SetRow(notice,3);main.Children.Add(notice);
   pages.Add(Scroll(overview));pages.Add(BuildActivities());classifyButton=Button("AI 分类",async delegate{await RunAI(false);});reportButton=Button("生成日报",async delegate{await RunAI(true);});cancelButton=Button("取消生成",delegate{if(request!=null)request.Cancel();});cancelButton.IsEnabled=false;pages.Add(BuildAnalysis());settingsScroll=Scroll(BuildSettings());var settingsPage=new DockPanel();var saveBar=Bar(Button("保存设置",SaveSettings),Button("恢复已保存设置",LoadSettings));saveBar.Margin=new Thickness(0,10,0,0);DockPanel.SetDock(saveBar,Dock.Bottom);settingsPage.Children.Add(saveBar);settingsPage.Children.Add(settingsScroll);pages.Add(settingsPage);pages.Add(Scroll(BuildAbout()));LoadSettings();Navigate(0);
-  BuildTrayMenu();using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.MouseUp+=delegate(object sender,Forms.MouseEventArgs e){if(e.Button==Forms.MouseButtons.Right)Dispatcher.Invoke((Action)ShowTrayMenu);};tray.Visible=!demo;tray.DoubleClick+=delegate{Dispatcher.Invoke((Action)Restore);};tray.BalloonTipClicked+=delegate{Dispatcher.Invoke((Action)delegate{Restore();Navigate(4);});};
-  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;Show();WindowState=WindowState.Normal;Activate();Error(ex);Forms.MessageBox.Show("保存记录失败，尚未退出："+ex.Message,"拾时");return;}trayMenu.IsOpen=false;if(updateRequest!=null)updateRequest.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();Application.Current.Shutdown();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
+  BuildTrayMenu();using(var iconStream=typeof(Desktop).Assembly.GetManifestResourceStream("App.ico")){tray.Icon=new System.Drawing.Icon(iconStream);}tray.Text="拾时 · 正在记录";tray.MouseUp+=delegate(object sender,Forms.MouseEventArgs e){if(e.Button==Forms.MouseButtons.Right)Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)ShowTrayMenu);};tray.Visible=!demo;tray.DoubleClick+=delegate{Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)Restore);};tray.BalloonTipClicked+=delegate{Dispatcher.BeginInvoke(DispatcherPriority.Background,(Action)delegate{Restore();Navigate(4);});};
+  Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(!quitting){e.Cancel=true;Hide();return;}try{if(!demo){if(!stopped)tracker.Feed(Sample());recorder.Flush();}}catch(Exception ex){e.Cancel=true;quitting=false;exitPending=false;Show();WindowState=WindowState.Normal;Activate();Error(ex);Forms.MessageBox.Show("保存记录失败，尚未退出："+ex.Message,"拾时");return;}trayMenu.IsOpen=false;if(updateRequest!=null)updateRequest.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();timer.Stop();SystemEvents.SessionSwitch-=Session;SystemEvents.PowerModeChanged-=Power;tray.Dispose();};SystemEvents.SessionSwitch+=Session;SystemEvents.PowerModeChanged+=Power;
   timer.Tick+=delegate{try{if(!stopped)tracker.Feed(Sample());CheckDayRollover(DateTime.Today);if(++ticks%5==0)recorder.Flush();if(ticks%15==0&&IsVisible){if(settings.Theme=="system")ApplyTheme(settings.Theme);if(selectedPage==0)Refresh();}if(lastCleanup!=DateTime.Today){recorder.Flush();store.Cleanup(settings.RetentionDays,DateTime.Today);recorder.Cache.Clear();lastCleanup=DateTime.Today;}}catch(Exception ex){stopped=true;timer.Stop();UpdateRecordingStatus();Error(ex);}};
   if(demo){var start=day.AddHours(9).ToUniversalTime();recorder.Add(start,start.AddMinutes(42),"WINWORD","项目方案","工作");recorder.Add(start.AddMinutes(42),start.AddMinutes(60),"msedge","C# 文档","学习");recorder.Add(start.AddMinutes(60),start.AddMinutes(75),"离开","无操作","离开");status.Text="演示数据";}else{store.Cleanup(settings.RetentionDays,DateTime.Today);tracker.Feed(Sample());timer.Start();}Loaded+=async delegate{if(!demo)await CheckAutomaticUpdates(DateTime.Today);};Refresh();LoadReport();UpdateRecordingStatus();
  }
@@ -136,11 +142,11 @@ public sealed class DesktopWindow:Window {
   trayPauseItem=AddTrayAction("暂停记录",TogglePause);
   AddTrayAction("设置",delegate{Restore();Navigate(3);});
   var separator=new Separator();separator.SetResourceReference(StyleProperty,"TraySeparator");trayMenu.Items.Add(separator);
-  AddTrayAction("退出",Exit);
+  AddTrayAction("退出",Exit,true);
  }
- MenuItem AddTrayAction(string name,Action action){
+ MenuItem AddTrayAction(string name,Action action,bool exits=false){
   var item=new MenuItem{Header=name};item.SetResourceReference(StyleProperty,"TrayMenuItem");
-  item.Click+=delegate{trayMenu.IsOpen=false;action();};trayMenu.Items.Add(item);return item;
+  item.Click+=delegate{if(exits)exitPending=true;trayMenu.IsOpen=false;Dispatcher.BeginInvoke(DispatcherPriority.Background,action);};trayMenu.Items.Add(item);return item;
  }
  void ShowTrayMenu(){
   if(quitting)return;
@@ -441,11 +447,22 @@ public sealed class DesktopWindow:Window {
   status.Text=stopped?"记录已停止":demo?"演示数据":tracker!=null&&tracker.Paused?"已暂停":"正在记录";
   status.Foreground=new SolidColorBrush(stopped?Color.FromRgb(226,90,90):tracker!=null&&tracker.Paused?Color.FromRgb(218,155,48):Color.FromRgb(27,173,132));
  }
- internal void ActivateExistingWindow(){if(!quitting)Restore();}
+ internal bool ActivateExistingWindow(){if(quitting||exitPending||!IsLoaded)return false;Restore();if(IsVisible&&activationCheckLog!=null)File.AppendAllText(activationCheckLog,";activated");return IsVisible;}
  async void Restore(){trayMenu.IsOpen=false;Show();WindowState=WindowState.Normal;Activate();try{await CheckAutomaticUpdates(DateTime.Today);}catch(Exception ex){Error(ex);}}
- void Exit(){if(busy&&!Confirm("取消当前 AI 操作并退出？"))return;if(request!=null)request.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();quitting=true;Close();}
- public async Task VerifyTrayExit(string log,bool hidden){
-  File.WriteAllText(log,"opened");if(hidden)Hide();ShowTrayMenu();await Dispatcher.Yield(DispatcherPriority.Background);
+ void Exit(){exitPending=true;if(busy&&!Confirm("取消当前 AI 操作并退出？")){exitPending=false;return;}if(exitCheckDelay>0)Thread.Sleep(exitCheckDelay);if(request!=null)request.Cancel();if(downloadRequest!=null)downloadRequest.Cancel();quitting=true;Close();}
+ bool exitPending;
+ internal int exitCheckDelay;
+ string activationCheckLog;
+ public async Task VerifyActivationLifecycle(string log){
+  activationCheckLog=log;await Dispatcher.Yield(DispatcherPriority.Background);Hide();tray.Visible=true;File.WriteAllText(log,"ready");
+  var end=new DispatcherTimer{Interval=TimeSpan.FromSeconds(8)};end.Tick+=delegate{end.Stop();Exit();};end.Start();
+ }
+ public async Task VerifyTrayExit(string log,bool hidden,bool nativeTray=false){
+  await Dispatcher.Yield(DispatcherPriority.Background);
+  File.WriteAllText(log,"opened");if(hidden)Hide();
+  if(nativeTray){tray.Visible=true;NativeAppearance.TestTrayRightClick(tray);await Task.Delay(150);}else ShowTrayMenu();
+  await Dispatcher.Yield(DispatcherPriority.Background);
+  if(!trayMenu.IsOpen)throw new Exception("Tray menu did not open");
   ((MenuItem)trayMenu.Items[trayMenu.Items.Count-1]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
   File.AppendAllText(log,"; clicked exit");
  }
@@ -469,9 +486,9 @@ public sealed class DesktopWindow:Window {
    }
    settings.Theme=originalAppearance;
    for(int repeat=0;repeat<12;repeat++){ShowTrayMenu();await Dispatcher.Yield(DispatcherPriority.Background);trayMenu.IsOpen=false;}
-   ShowTrayMenu();trayPauseItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));ShowTrayMenu();
+   ShowTrayMenu();trayPauseItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));await Dispatcher.Yield(DispatcherPriority.Background);ShowTrayMenu();
    check("tray pause action closes menu and next open shows continue",tracker.Paused&&trayPauseItem.Header.ToString()=="继续记录");
-   trayPauseItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));check("tray continue action restores recording",!tracker.Paused&&!trayMenu.IsOpen);
+   trayPauseItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));await Dispatcher.Yield(DispatcherPriority.Background);check("tray continue action restores recording",!tracker.Paused&&!trayMenu.IsOpen);
    Navigate(4);
    check("navigation and dropdown lifecycle",content.Content==pages[4]);
    check("statistics page removed and about is the fifth page",pages.Count==5&&navigation.Count==5&&!navigation.Any(x=>x.Content.ToString().Contains("使用统计")));
