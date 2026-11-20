@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f7f2">
+  <meta name="description" content="拾时 DayTrace，一款轻量的 Windows 11 电脑活动记录工具。自动记录软件使用时间，用时间轴、分类和 AI 日报，回顾电脑前的一天。">
+  <meta property="og:title" content="拾时 DayTrace · 一天的时间，有迹可循">
+  <meta property="og:description" content="轻量记录软件使用时间，从细致时间轴到 AI 日报。Windows 11，下载即可运行。">
+  <meta property="og:type" content="website">
+  <title>拾时 DayTrace · 一天的时间，有迹可循</title>
+  <link rel="icon" href="assets/daytrace.ico">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header">
+    <div class="header-inner wrap">
+      <a class="brand" href="#" aria-label="拾时首页"><img src="assets/daytrace.ico" width="36" height="36" alt=""><span>拾时<span class="brand-en">DayTrace</span></span></a>
+      <nav aria-label="主导航"><a class="nav-section" href="#features">功能</a><a class="nav-section" href="#start">开始使用</a><a class="github-link" href="https://github.com/Yui-Wei/DayTrace" target="_blank" rel="noopener noreferrer">GitHub<svg aria-hidden="true"><use href="#i-github"/></svg></a><a class="button button-small" href="#download">下载软件</a></nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <h1 id="hero-title">一天的时间，<br><span>有迹可循。</span></h1>
+      <p class="hero-copy">自动记录你何时用了哪些软件、持续多久。<br class="desktop-break">从细致时间轴到 AI 日报，轻松回顾电脑前的一天。</p>
+      <div class="hero-actions"><a class="button button-primary" data-download href="https://github.com/Yui-Wei/DayTrace/releases/latest/download/DayTrace.exe"><svg aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 版</a><a class="text-link" href="https://github.com/Yui-Wei/DayTrace/releases/latest" target="_blank" rel="noopener noreferrer">查看版本记录</a></div>
+      <p class="download-meta" data-release-meta aria-live="polite">最新正式版 · 64 位 · 免安装</p>
+      <div class="product-stage">
+        <div class="stage-top"><span class="stage-caption">把时间看清楚，就从今天开始。</span><div class="theme-tabs" role="group" aria-label="界面预览主题"><button type="button" data-preview="light" aria-pressed="false">浅色</button><button type="button" data-preview="dark" aria-pressed="true">深色</button></div></div>
+        <a class="screenshot-link" href="assets/overview-dark.png" target="_blank" rel="noopener" data-preview-link aria-label="在新窗口查看软件界面大图"><img id="product-shot" src="assets/overview-dark.png" alt="拾时今日概览演示：有效使用时长、活动时间轴、分类图例和应用使用排行" width="1266" height="813" fetchpriority="high"></a>
+        <div class="stage-bottom"><span><svg aria-hidden="true"><use href="#i-clock"/></svg>真实软件界面 · 演示数据</span><span>点击界面可查看大图</span></div>
+      </div>
+    </section>
+    <section class="features wrap section" id="features" aria-labelledby="features-title">
+      <div class="section-heading"><p class="section-label">记录少一点操作，回顾多一点清晰</p><h2 id="features-title">不用记流水账，<br>也能看清时间去了哪里。</h2><p>记录在后台安静进行。想回顾时，再把一天展开。</p></div>
+      <div class="feature-grid">
+        <article class="feature"><div class="feature-icon"><svg aria-hidden="true"><use href="#i-window"/></svg></div><h3>自动记录，省下手动计时</h3><p>记录前台软件与窗口标题，以及每段活动的起止时间和时长。支持暂停记录、排除软件与开机自启动。</p></article>
+        <article class="feature"><div class="feature-icon"><svg aria-hidden="true"><use href="#i-timeline"/></svg></div><h3>从一整天，看到两分钟</h3><p>点击时间轴，依次展开到一小时、两分钟。悬停即可查看具体时间、软件和任务，细小的切换也有迹可循。</p></article>
+        <article class="feature"><div class="feature-icon"><svg aria-hidden="true"><use href="#i-category"/></svg></div><h3>分类，也懂得区别对待</h3><p>音乐软件可按整个软件分类，浏览器可按窗口标题区分。支持手动分类和 AI 分类，已知分类可自动沿用。</p></article>
+        <article class="feature"><div class="feature-icon"><svg aria-hidden="true"><use href="#i-spark"/></svg></div><h3>给一天，写一份 AI 日报</h3><p>主动点击生成，将活动记录汇总成日报。使用你自己的 DeepSeek 或其他 OpenAI 兼容接口，按需启用。</p></article>
+      </div>
+    </section>
+    <section class="local-section" aria-labelledby="local-title"><div class="wrap local-inner">
+      <div class="local-visual" aria-hidden="true"><div class="local-mark"><img src="assets/daytrace.ico" alt="" width="68" height="68"></div><div class="local-file"><svg><use href="#i-folder"/></svg><span>你的记录</span><span class="file-tag">本机保存</span></div><div class="local-path"></div><div class="local-device"><svg><use href="#i-window"/></svg><span>你的电脑</span></div></div>
+      <div class="local-copy"><p class="section-label">你的记录，由你掌握</p><h2 id="local-title">轻量运行，<br>记录留在本机。</h2><p>日常记录与设置默认保存在电脑上。API Key 存放在 Windows 凭据管理器中，正常升级会保留原有数据。</p><p>只有你主动使用 AI 分类或日报时，相关活动信息才会发送给你配置的 AI 接口。</p><div class="local-notes"><span><svg aria-hidden="true"><use href="#i-check"/></svg>本地记录无需配置 AI</span><span><svg aria-hidden="true"><use href="#i-check"/></svg>托盘常驻，随时暂停</span></div></div>
+    </div></section>
+    <section class="start-section wrap section" id="start" aria-labelledby="start-title"><div class="section-heading compact"><p class="section-label">从现在，开始记录</p><h2 id="start-title">下载。打开。照常使用。</h2></div><div class="steps"><article><span class="step-word">下载</span><h3>获取最新正式版</h3><p>面向 Windows 11 64 位系统。下载独立程序，或到发布页获取压缩包。</p></article><article><span class="step-word">打开</span><h3>双击运行，即可开始</h3><p>无需安装向导。按自己的习惯，选择主题、自启动以及需要排除的软件。</p></article><article><span class="step-word">回顾</span><h3>让一天慢慢清晰</h3><p>从概览和时间轴查看使用情况，按需分类，或配置 API 后生成日报。</p></article></div></section>
+    <section class="faq-section wrap section" aria-labelledby="faq-title"><div class="faq-heading"><p class="section-label">你可能想知道</p><h2 id="faq-title">开始前的小问题。</h2></div><div class="faq-list">
+      <details><summary>不配置 AI，也能正常使用吗？<span aria-hidden="true">+</span></summary><p>可以。自动记录、时间轴、统计和手动分类都不需要 AI。AI 分类和日报需要填写你自己的 API Key。</p></details>
+      <details><summary>升级软件后，原来的记录还在吗？<span aria-hidden="true">+</span></summary><p>正常升级会保留记录、分类和设置。数据存放在用户目录，和程序文件分开；API Key 则保存在 Windows 凭据管理器中。</p></details>
+      <details><summary>怎样更新到新版本？<span aria-hidden="true">+</span></summary><p>在软件的“关于”页面手动检查更新，也可以开启每天一次的自动检查。发现新版后可在软件内下载安装并重新启动。</p></details>
+      <details><summary>怎样设置开机自启动？<span aria-hidden="true">+</span></summary><p>在“设置”里打开开机自启动开关即可，修改会立即生效。其他设置也会自动保存，不需要额外点击保存按钮。</p></details>
+    </div></section>
+    <section class="download-section wrap" id="download" aria-labelledby="download-title"><div class="download-panel"><img src="assets/daytrace.ico" width="58" height="58" alt=""><p class="section-label">拾时 · DayTrace</p><h2 id="download-title">把一天的时间，拾回来。</h2><p>从一次轻量的记录开始，了解自己的电脑使用习惯。</p><a class="button button-primary" data-download href="https://github.com/Yui-Wei/DayTrace/releases/latest/download/DayTrace.exe"><svg aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 版</a><p class="download-meta" data-release-meta>最新正式版 · 64 位 · 免安装</p><a class="text-link secondary-link" href="https://github.com/Yui-Wei/DayTrace/releases/latest" target="_blank" rel="noopener noreferrer">压缩包与其他下载</a></div></section>
+  </main>
+  <footer class="wrap site-footer"><a class="brand footer-brand" href="#"><img src="assets/daytrace.ico" width="28" height="28" alt=""><span>拾时<span class="brand-en">DayTrace</span></span></a><p>让时间有迹可循。</p><div><a href="https://github.com/Yui-Wei/DayTrace" target="_blank" rel="noopener noreferrer">源码</a><a href="https://github.com/Yui-Wei/DayTrace/issues" target="_blank" rel="noopener noreferrer">问题反馈</a><a href="https://github.com/Yui-Wei/DayTrace/releases" target="_blank" rel="noopener noreferrer">版本记录</a></div></footer>
+  <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></symbol>
+    <symbol id="i-windows" viewBox="0 0 24 24"><path d="M3 4h8v8H3zm10 0h8v8h-8zM3 14h8v7H3zm10 0h8v7h-8z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="2"/><path d="M3 8h18M9 22h6m-3-3v3"/></symbol>
+    <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M3 17h18M6 5v4m6-4v4m6-4v4"/><rect x="3" y="10" width="8" height="4" rx="1"/><rect x="14" y="10" width="7" height="4" rx="1"/><path d="M6 17v3m6-3v3m6-3v3"/></symbol>
+    <symbol id="i-category" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3zm7-2v4m-2-2h4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h10v13H3V7z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-5 1-5-2-7-2m14 5v-4c0-1-.3-1.8-1-2 3.3-.4 6-1.6 6-6a4.7 4.7 0 0 0-1.2-3.3A4.3 4.3 0 0 0 19.7 3S18.5 2.6 16 4a12 12 0 0 0-8 0C5.5 2.6 4.3 3 4.3 3a4.3 4.3 0 0 0-.1 3.7A4.7 4.7 0 0 0 3 10c0 4.4 2.7 5.6 6 6-.7.4-1 1-1 2v4"/></symbol>
+  </defs></svg>
+</body>
+</html>
