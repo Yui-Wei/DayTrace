@@ -1,4 +1,4 @@
-﻿# 拾时 · DayTrace
+# 拾时 · DayTrace
 
 Windows 11 桌面活动记录工具，当前版本 **V1.1.5**。
 
@@ -43,3 +43,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\source\build.ps1
 用户数据保存在 `%LOCALAPPDATA%\DayTrace`，API Key 保存在 Windows 凭据管理器；迁移源码目录不会迁移或删除这些数据。
 
 Git 跟踪源码、构建脚本及说明。生成的程序、压缩包、临时文件及本地用户数据不纳入版本管理。正式版本标记为 `v1.1.5`。后续按 [版本规则](VERSIONING.md) 发布。
+
+## 开源协议
+
+Copyright (C) 2026 Yui-Wei。
+
+拾时的代码及随附项目文件采用 **GNU General Public License v3.0 only（GPL-3.0-only，仅第 3 版）** 授权，完整条款见 [LICENSE](LICENSE)。允许使用、修改及商用；分发程序或修改版时，应遵守 GPL-3.0，包括提供对应源代码、保留许可和版权声明等要求。软件按现状提供，不附带担保。
+
+后续发布的压缩包会随附完整许可证、对应源码及构建脚本。此前发布的版本标签和附件保持原样。

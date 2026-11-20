@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Yui-Wei
+
 (() => {
   'use strict';
   const repo = 'https://github.com/Yui-Wei/DayTrace';

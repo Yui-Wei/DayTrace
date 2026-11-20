@@ -1,4 +1,7 @@
-﻿using System;
+﻿// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Yui-Wei
+
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;

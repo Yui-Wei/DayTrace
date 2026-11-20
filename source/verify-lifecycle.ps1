@@ -1,4 +1,7 @@
-﻿param([switch]$SkipBuild)
+﻿# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Yui-Wei
+
+param([switch]$SkipBuild)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 if(-not $SkipBuild){& (Join-Path $PSScriptRoot 'build.ps1');if($LASTEXITCODE -ne 0){throw 'Build failed'}}

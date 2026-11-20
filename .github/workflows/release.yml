@@ -33,7 +33,7 @@ jobs:
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
           $folder = "outputs/DayTrace-v$version"
-          gh release create $env:RELEASE_TAG "$folder/DayTrace.exe" "$folder/update.json" "outputs/DayTrace-v$version.zip" --verify-tag --draft --title "拾时 $version" --notes-file RELEASE_NOTES.md
+          gh release create $env:RELEASE_TAG "$folder/DayTrace.exe" "$folder/LICENSE" "$folder/update.json" "outputs/DayTrace-v$version.zip" --verify-tag --draft --title "拾时 $version" --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
           gh release edit $env:RELEASE_TAG --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publishing failed' }
